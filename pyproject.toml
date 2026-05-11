@@ -1,0 +1,149 @@
+[project]
+name = "py-draw"
+version = "1.3.0"
+description = "气象数据可视化地图图片渲染服务"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "py-draw team" }]
+
+dependencies = [
+    "aiohttp>=3.9.5",
+    "apscheduler>=3.10.4",
+    "cartopy>=0.22.0",
+    "cinrad>=1.9.1",
+    "fastapi>=0.112.2",
+    "frykit>=0.6.7",
+    "matplotlib>=3.8.4",
+    "netcdf4>=1.7.1",
+    "nmc-met-io>=0.1.13.0",
+    "numpy>=1.26.0,<2.0.0",
+    "pandas>=2.2.2",
+    "pillow>=10.4.0",
+    "pycwr>=0.4.0",
+    "pydantic>=2.8.2",
+    "scipy>=1.14.1",
+    "scikit-image>=0.22.0",
+    "uvicorn[standard]>=0.30.6",
+    "aiofiles>=25.1.0",
+    "gmalglib>=0.5.9",
+    "pydantic-settings>=2.14.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.11.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+py-draw = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.extra-build-dependencies]
+cinrad = ["numpy"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["api", "config", "models", "rendering", "services", "util"]
+
+# ============================================================
+# Ruff — 统一 Linter + Formatter（替代 flake8 + isort + black）
+# ============================================================
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["api", "config", "models", "rendering", "services", "util"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific
+    "C4",   # flake8-comprehensions
+    "EM",   # flake8-errmsg
+    "TRY",  # tryceratops
+]
+ignore = [
+    "E501",   # line too long（由formatter处理）
+    "B008",   # function call in default argument（FastAPI Depends需要）
+    "N806",   # non-lowercase variable（科学计算中U/V/DBz等大写是惯例）
+    "TRY003", # avoid long messages in exception（气象领域错误信息需要详细）
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "config", "models", "rendering", "services", "util"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"util/radar/*.py" = ["N803"]  # radar库的变量名约定
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# ============================================================
+# Mypy — 静态类型检查
+# ============================================================
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cartopy.*",
+    "cinrad.*",
+    "pycwr.*",
+    "frykit.*",
+    "gmssl.*",
+    "nmc_met_io.*",
+    "scipy.*",
+    "netCDF4.*",
+    "skimage.*",
+    "apscheduler.*",
+    "matplotlib.*",
+]
+ignore_missing_imports = true
+
+# ============================================================
+# Pytest
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.11.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
