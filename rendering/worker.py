@@ -65,7 +65,9 @@ def deserialize_shapefile_data(data: dict) -> tuple:
     return records, data["bounds"], geometries
 
 
-def render_in_subprocess(bounds, stations, records_data, pos, vals, color_types, is_rain, config, city_shape_data=None, town_shape_data=None) -> bytes:
+def render_in_subprocess(
+    bounds, stations, records_data, pos, vals, color_types, is_rain, config, city_shape_data=None, town_shape_data=None
+) -> bytes:
     """在子进程中执行完整的站点数据渲染流程.
 
     Args:
@@ -107,12 +109,21 @@ def render_in_subprocess(bounds, stations, records_data, pos, vals, color_types,
     if config.get("is_city") and city_shape_data is not None:
         _city_records, _, city_geometries = deserialize_shapefile_data(city_shape_data)
         if city_geometries:
-            ax.add_geometries(city_geometries, crs=project, facecolor="none", edgecolor=bounds_colors[0], linewidth=lines[0])
+            ax.add_geometries(
+                city_geometries, crs=project, facecolor="none", edgecolor=bounds_colors[0], linewidth=lines[0]
+            )
 
     if config.get("show_town") and town_shape_data is not None:
         town_records, _, town_geometries = deserialize_shapefile_data(town_shape_data)
         if town_geometries:
-            ax.add_geometries(town_geometries, crs=project, facecolor="none", edgecolor=bounds_colors[2], linewidth=lines[2], alpha=0.8)
+            ax.add_geometries(
+                town_geometries,
+                crs=project,
+                facecolor="none",
+                edgecolor=bounds_colors[2],
+                linewidth=lines[2],
+                alpha=0.8,
+            )
         if config.get("show_town_name") and town_records:
             draw_area_names(ax, town_records, config)
 
@@ -141,7 +152,9 @@ def render_in_subprocess(bounds, stations, records_data, pos, vals, color_types,
     if len(vals) > 0:
         if config.get("show_contourf", True):
             t4 = _time.time()
-            interplate_val = _interpolator.interpolate_grid(pos[:, 0], pos[:, 1], vals, [lon, lat], method=config.get("interpolation_method", "rbf"))
+            interplate_val = _interpolator.interpolate_grid(
+                pos[:, 0], pos[:, 1], vals, [lon, lat], method=config.get("interpolation_method", "rbf")
+            )
             logging.info(f"[PERF-WORKER] interpolate_grid: {_time.time() - t4:.3f}s, grid_shape={interplate_val.shape}")
 
             t5 = _time.time()
@@ -224,7 +237,9 @@ def render_nc_in_subprocess(bounds, records_data, lon, lat, vals, code, data_typ
         if city_geometries:
             bounds_colors = config.get("bounds_colors", ["#333", "#333", "#666"])
             bound_lines = config.get("bound_lines", [2.0, 2.0, 0.7])
-            ax.add_geometries(city_geometries, crs=project, facecolor="none", edgecolor=bounds_colors[1], linewidth=bound_lines[1])
+            ax.add_geometries(
+                city_geometries, crs=project, facecolor="none", edgecolor=bounds_colors[1], linewidth=bound_lines[1]
+            )
             draw_area_names(ax, city_records, config, "NAME")
 
     if config.get("is_clip", True):
@@ -273,13 +288,31 @@ def render_nc_in_subprocess(bounds, records_data, lon, lat, vals, code, data_typ
                     vs_list.append(v[i][j])
 
     if len(us_list) > 0:
-        ax.barbs(np.array(lons_list), np.array(lats_list), np.array(us_list), np.array(vs_list), length=6, color="#333", pivot="middle", transform=project)
+        ax.barbs(
+            np.array(lons_list),
+            np.array(lats_list),
+            np.array(us_list),
+            np.array(vs_list),
+            length=6,
+            color="#333",
+            pivot="middle",
+            transform=project,
+        )
 
     if len(arr_vals) > 0:
         for val in arr_vals:
             val[2] = str(int(val[2])) if data_type == "vis" else f"{val[2]:.1f}"
         for val in arr_vals:
-            ax.text(val[0], val[1], val[2], transform=project, ha="center", va="center", fontsize=config.get("font_size", 14), color=config.get("font_color", "#666"))
+            ax.text(
+                val[0],
+                val[1],
+                val[2],
+                transform=project,
+                ha="center",
+                va="center",
+                fontsize=config.get("font_size", 14),
+                color=config.get("font_color", "#666"),
+            )
 
     fig.tight_layout()
     _reset_margin(ax, cbar, config)
@@ -305,11 +338,15 @@ def _resolve_colors(config: dict, color_types: list) -> tuple:
         tmp = custom_color.split(",")
         return tmp[::2], [float(str(item)) for item in tmp[1::2]]
 
-    cmap = get_color_map(config.get("axis", ""), color_types[0], month=config.get("month", 7), show_contourf=config.get("show_contourf", True))
-    return list(zip(*[
-        [rgb_to_hex(item["stop"][:3]), item["value"]]
-        for item in cmap if item["value"] < 99999
-    ], strict=True))
+    cmap = get_color_map(
+        config.get("axis", ""),
+        color_types[0],
+        month=config.get("month", 7),
+        show_contourf=config.get("show_contourf", True),
+    )
+    return list(
+        zip(*[[rgb_to_hex(item["stop"][:3]), item["value"]] for item in cmap if item["value"] < 99999], strict=True)
+    )
 
 
 def _adjust_rain_levels(color_vals, data_type):
@@ -330,7 +367,9 @@ def _draw_contourf(ax, lon, lat, grid_vals, config, state):
 
     if color_vals:
         color_vals = _adjust_rain_levels(color_vals, data_type)
-        return ax.contourf(lon, lat, grid_vals, color_vals, extend="both", colors=colors[0], transform=ccrs.PlateCarree())
+        return ax.contourf(
+            lon, lat, grid_vals, color_vals, extend="both", colors=colors[0], transform=ccrs.PlateCarree()
+        )
 
     return ax.contourf(lon, lat, grid_vals, extend="both", transform=ccrs.PlateCarree())
 
@@ -385,7 +424,9 @@ def _set_contourf_bar(ax, fig, pc, config, state=None, lon=None, lat=None, vals=
         bar_width += 0.15
         ax2 = fig.add_axes([0, 0.1, bar_width, bar_aspect / width])
 
-    cbar = fig.colorbar(pc, cax=ax2, ticks=ticks, location=location, extendfrac=0.1 if config.get("arrow", False) else 0)
+    cbar = fig.colorbar(
+        pc, cax=ax2, ticks=ticks, location=location, extendfrac=0.1 if config.get("arrow", False) else 0
+    )
 
     _style_cbar(cbar, config, ticks)
 
@@ -413,7 +454,9 @@ def _style_cbar(cbar, config, ticks):
             tick_labels.append(int(v))
         else:
             tick_labels.append(float(v) if ticks else round(v, 1))
-    cbar.set_ticklabels(tick_labels, fontdict={"fontsize": config.get("bar_fontsize", 14), "color": config.get("bar_txtcolor", "#666")})
+    cbar.set_ticklabels(
+        tick_labels, fontdict={"fontsize": config.get("bar_fontsize", 14), "color": config.get("bar_txtcolor", "#666")}
+    )
 
 
 def _reset_margin(ax, cbar, config):
@@ -434,7 +477,14 @@ def _reset_margin(ax, cbar, config):
             pad += 10
         if config.get("bar_pad") is not None:
             pad = config["bar_pad"]
-        cbar.ax.set_position([box.xmax - pad / config.get("width", 700), box.ymin + 10.0 / config.get("height", 700), 0.02, barbox.height])
+        cbar.ax.set_position(
+            [
+                box.xmax - pad / config.get("width", 700),
+                box.ymin + 10.0 / config.get("height", 700),
+                0.02,
+                barbox.height,
+            ]
+        )
     else:
         box = ax.get_position()
         barbox = cbar.ax.get_position()
@@ -443,13 +493,22 @@ def _reset_margin(ax, cbar, config):
             pad = 25
         if config.get("bar_pad") is not None:
             pad = config["bar_pad"]
-        cbar.ax.set_position([box.xmin + (box.width - barbox.width) / 2, box.ymin + pad / config.get("height", 700), barbox.width, barbox.height])
+        cbar.ax.set_position(
+            [
+                box.xmin + (box.width - barbox.width) / 2,
+                box.ymin + pad / config.get("height", 700),
+                barbox.width,
+                barbox.height,
+            ]
+        )
 
 
 def _get_auto_colors(v_min, v_max, axis, data_type, config):
     """根据数据范围自动计算色标颜色和值."""
     cmap = get_color_map(axis, data_type, month=config.get("month", 7), show_contourf=True)
-    data = list(zip(*[[rgb_to_hex(item["stop"][:3]), item["value"]] for item in cmap if item["value"] < 99999], strict=False))
+    data = list(
+        zip(*[[rgb_to_hex(item["stop"][:3]), item["value"]] for item in cmap if item["value"] < 99999], strict=False)
+    )
     colors = data[0]
     vals = data[1]
 
@@ -502,6 +561,7 @@ def _top_face(stations, is_rain, config):
     import pandas as pd
 
     from config import SHOW_MINS
+
     df = pd.DataFrame(stations)
     df["val"] = df["val"].astype(float)
     is_ascending = config and config.get("axis") in SHOW_MINS

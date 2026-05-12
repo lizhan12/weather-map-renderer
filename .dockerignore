@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments (关键: 防止覆盖 builder 的 .venv)
+.venv/
+venv/
+ENV/
+
+# uv
+
+
+# IDE
+.idea/
+.vscode/
+.trae/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+*.log
+log/
+imgs/pic/
+imgs/data/
+imgs/temp/
+script/
+pic/
+tests/
+config.json
+.env
+.env.*
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# ZIP & temp
+*.zip
+temp/
+cinrad.zip
+PyCINRAD-master/

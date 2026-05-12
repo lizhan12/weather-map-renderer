@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -19,6 +20,8 @@ from util.trace_logger import TraceLogger
 _process_pool: ProcessPoolExecutor | None = None
 _cache_write_count = 0
 _CLEANUP_INTERVAL = 20
+_cleanup_lock = threading.Lock()
+_is_cleaning = False
 
 
 def _cache_path(cache_key: str) -> str:
@@ -37,6 +40,39 @@ def _cache_exists(cache_key: str) -> bool:
     return False
 
 
+def _cleanup_cache(cache_dir: str) -> None:
+    """在后台线程中清理过期缓存文件, 同一时刻只允许一个清理线程运行."""
+    global _is_cleaning
+
+    with _cleanup_lock:
+        if _is_cleaning:
+            return
+        _is_cleaning = True
+
+    try:
+        now = time.time()
+        ttl = settings.cache_ttl
+        files = []
+        for f in os.listdir(cache_dir):
+            if not f.endswith(".png"):
+                continue
+            path = os.path.join(cache_dir, f)
+            try:
+                mtime = os.path.getmtime(path)
+                if now - mtime >= ttl:
+                    files.append((mtime, path))
+            except OSError:
+                pass
+
+        files.sort()
+        for _, path in files:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    finally:
+        with _cleanup_lock:
+            _is_cleaning = False
+
+
 def _cache_set(cache_key: str, data: bytes) -> None:
     """将图片数据写入 imgs 目录, 每隔 _CLEANUP_INTERVAL 次写入触发清理."""
     global _cache_write_count
@@ -50,13 +86,7 @@ def _cache_set(cache_key: str, data: bytes) -> None:
     if _cache_write_count % _CLEANUP_INTERVAL != 0:
         return
 
-    files = sorted(
-        (os.path.join(cache_dir, f) for f in os.listdir(cache_dir) if f.endswith(".png")),
-        key=os.path.getmtime,
-    )
-    for old in files[: -settings.cache_max_files]:
-        with contextlib.suppress(OSError):
-            os.remove(old)
+    threading.Thread(target=_cleanup_cache, args=(cache_dir,), daemon=True).start()
 
 
 def _init_subprocess():
@@ -160,7 +190,11 @@ class RenderService:
             logging.info(f"[PERF] get_shape: {time.time() - t_parallel:.3f}s, vals={len(vals)}")
         else:
             data_task = self._data_service.get_data(
-                config.get("axis", ""), code, config.get("datestr"), config.get("start_time"), config.get("is_city", False)
+                config.get("axis", ""),
+                code,
+                config.get("datestr"),
+                config.get("start_time"),
+                config.get("is_city", False),
             )
             t_parallel = time.time()
             TraceLogger.log("shape_serialize")
@@ -247,9 +281,7 @@ class RenderService:
         records_data = await loop.run_in_executor(None, self._shape_service.get_serialized, code, tail)
 
         if is_zhejiang:
-            config["city_shape_data"] = await loop.run_in_executor(
-                None, self._shape_service.get_serialized, code, ""
-            )
+            config["city_shape_data"] = await loop.run_in_executor(None, self._shape_service.get_serialized, code, "")
 
         if records_data is None or records_data.get("bounds") is None:
             return ""

@@ -33,7 +33,12 @@ class Interpolator:
         )
 
     def interpolate_grid(
-        self, lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray], method: str = "rbf",
+        self,
+        lons: np.ndarray,
+        lats: np.ndarray,
+        vals: np.ndarray,
+        mesh: tuple[np.ndarray, np.ndarray],
+        method: str = "rbf",
     ) -> np.ndarray:
         """将站点观测值插值到网格上.
 
@@ -60,7 +65,9 @@ class Interpolator:
             return self._interpolate_rbf(lons, lats, vals, mesh)
 
     @staticmethod
-    def _interpolate_rbf(lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+    def _interpolate_rbf(
+        lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray]
+    ) -> np.ndarray:
         """RBF (径向基函数) 插值, 使用 linear 核函数.
 
         Args:
@@ -76,7 +83,9 @@ class Interpolator:
         return rbf(mesh[0], mesh[1])
 
     @staticmethod
-    def _interpolate_idw(lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray], power: float = 2.0) -> np.ndarray:
+    def _interpolate_idw(
+        lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray], power: float = 2.0
+    ) -> np.ndarray:
         """IDW (反距离加权) 插值, 取最近 k=10 个站点加权.
 
         Args:
@@ -101,7 +110,14 @@ class Interpolator:
         return (np.sum(weighted_vals, axis=1) / np.sum(weights, axis=1)).reshape(mesh[0].shape)
 
     @staticmethod
-    def _interpolate_cressman(lons: np.ndarray, lats: np.ndarray, vals: np.ndarray, mesh: tuple[np.ndarray, np.ndarray], radius: float = 0.1, iterations: int = 3) -> np.ndarray:
+    def _interpolate_cressman(
+        lons: np.ndarray,
+        lats: np.ndarray,
+        vals: np.ndarray,
+        mesh: tuple[np.ndarray, np.ndarray],
+        radius: float = 0.1,
+        iterations: int = 3,
+    ) -> np.ndarray:
         """Cressman 插值, 基于影响半径的逐步逼近方法.
 
         Args:

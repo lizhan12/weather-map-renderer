@@ -159,10 +159,12 @@ class ShapeService:
                 geom = record.geometry if hasattr(record, "geometry") else geometries[i] if geometries else None
                 if geom is not None:
                     simplified = geom.simplify(_SIMPLIFY_TOLERANCE, preserve_topology=True)
-                    geoms.append({
-                        "type": simplified.geom_type,
-                        "coordinates": simplified.__geo_interface__["coordinates"],
-                    })
+                    geoms.append(
+                        {
+                            "type": simplified.geom_type,
+                            "coordinates": simplified.__geo_interface__["coordinates"],
+                        }
+                    )
                 else:
                     geoms.append(None)
             except Exception:

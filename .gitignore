@@ -27,14 +27,12 @@ ENV/
 .classpath
 .settings/
 .trae/
-.ruff_cache/
-__pycache__/
-test_*
+
 # OS
 .DS_Store
 Thumbs.db
 Desktop.ini
-.venv/
+
 # Logs
 *.log
 log/
@@ -45,15 +43,22 @@ imgs/data/
 imgs/temp/
 script/
 pic/
-tests/
+
 ## Config with secrets
 config.json
+
+# Local test scripts
+test_post_api.py
+
+# Test artifacts
+test_data_*.json
+test_output.png
+test_tem.png
 
 # Environment
 .env
 .env.*
 !.env.example
-
 
 # Test
 .pytest_cache/

@@ -23,13 +23,19 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
     offset_x = 0
 
     trans_name = ax.transData + ScaledTranslation(
-        offset_x / ax.figure.dpi, (offset_y + 2) / ax.figure.dpi, ax.figure.dpi_scale_trans,
+        offset_x / ax.figure.dpi,
+        (offset_y + 2) / ax.figure.dpi,
+        ax.figure.dpi_scale_trans,
     )
     trans_value = ax.transData + ScaledTranslation(
-        offset_x / ax.figure.dpi, (offset_y - 1) / ax.figure.dpi, ax.figure.dpi_scale_trans,
+        offset_x / ax.figure.dpi,
+        (offset_y - 1) / ax.figure.dpi,
+        ax.figure.dpi_scale_trans,
     )
     trans_point = ax.transData + ScaledTranslation(
-        offset_x / ax.figure.dpi, offset_y / ax.figure.dpi, ax.figure.dpi_scale_trans,
+        offset_x / ax.figure.dpi,
+        offset_y / ax.figure.dpi,
+        ax.figure.dpi_scale_trans,
     )
 
     projection = ccrs.Mercator()
@@ -42,9 +48,12 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
     if show_name:
         for item in arr:
             ax.text(
-                item[0], item[1], item[2],
+                item[0],
+                item[1],
+                item[2],
                 color=config.get("txt_fontcolor", "#666"),
-                verticalalignment="bottom", horizontalalignment="center",
+                verticalalignment="bottom",
+                horizontalalignment="center",
                 fontsize=config.get("txt_fontsize", 14),
                 transform=trans_name,
             )
@@ -52,9 +61,12 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
     if show_value:
         for item in arr:
             ax.text(
-                item[0], item[1], item[3],
+                item[0],
+                item[1],
+                item[3],
                 color=config.get("val_fontcolor", "#666"),
-                verticalalignment="top", horizontalalignment="center",
+                verticalalignment="top",
+                horizontalalignment="center",
                 fontsize=config.get("val_fontsize", 14),
                 transform=trans_value,
             )
@@ -62,6 +74,10 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
     if show_point:
         for item in arr:
             ax.scatter(
-                item[0], item[1], s=8, transform=trans_point,
-                color=config.get("point_color", "#666"), marker="o",
+                item[0],
+                item[1],
+                s=8,
+                transform=trans_point,
+                color=config.get("point_color", "#666"),
+                marker="o",
             )

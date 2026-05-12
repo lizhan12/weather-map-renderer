@@ -5,7 +5,9 @@ import logging
 import cartopy.crs as ccrs
 
 
-def draw_overlay(fig, ax, stations: list, config: dict, state: dict, face_data: list | None = None, top_data: list | None = None) -> None:
+def draw_overlay(
+    fig, ax, stations: list, config: dict, state: dict, face_data: list | None = None, top_data: list | None = None
+) -> None:
     """绘制叠加层: 标题/排名表/面雨量表/发布单位.
 
     Args:
@@ -61,7 +63,11 @@ def _draw_rank_table(ax, head: list | None, config: dict) -> None:
     loc[3] = ((config.get("top", 1)) * 16.0 + 25) / (height * 0.5)
 
     tb = ax.table(
-        cellText=arr, colWidths=[0.2], cellLoc="left", rowLoc="left", bbox=loc,
+        cellText=arr,
+        colWidths=[0.2],
+        cellLoc="left",
+        rowLoc="left",
+        bbox=loc,
     )
     tb.auto_set_font_size(False)
     tb.set_fontsize(14)
@@ -97,7 +103,11 @@ def _draw_face_rainfall_table(ax, face: list | None, config: dict) -> None:
     loc[3] = (len(arr) * 25.0) / height
 
     tb = ax.table(
-        cellText=arr, colWidths=[loc[2]], cellLoc="left", rowLoc="center", bbox=loc,
+        cellText=arr,
+        colWidths=[loc[2]],
+        cellLoc="left",
+        rowLoc="center",
+        bbox=loc,
     )
     tb.auto_set_font_size(False)
     tb.set_fontsize(14)
@@ -127,7 +137,11 @@ def _draw_publisher(ax, config: dict) -> None:
     arr = [[t] for t in txt]
 
     tb = ax.table(
-        cellText=arr, colWidths=[loc[2]], cellLoc="right", rowLoc="bottom", bbox=loc,
+        cellText=arr,
+        colWidths=[loc[2]],
+        cellLoc="right",
+        rowLoc="bottom",
+        bbox=loc,
     )
     tb.auto_set_font_size(False)
     tb.set_fontsize(14)
@@ -152,9 +166,11 @@ def draw_area_names(ax, records, config: dict, name_field: str = "TOWN") -> None
     for record in records:
         try:
             ax.text(
-                record.geometry.centroid.x, record.geometry.centroid.y,
+                record.geometry.centroid.x,
+                record.geometry.centroid.y,
                 record.attributes.get(name_field),
-                verticalalignment="top", horizontalalignment="center",
+                verticalalignment="top",
+                horizontalalignment="center",
                 transform=project,
                 fontsize=config.get("town_fontsize", 12),
                 color=fontcolor,

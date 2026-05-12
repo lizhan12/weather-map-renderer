@@ -216,12 +216,14 @@ def _adjust_extent_to_1_1(ax, extent: list, tolerance: float = 1e-3, max_iters: 
     """
     proj = ax.projection
     for _ in range(max_iters):
-        corners = np.array([
-            [extent[0], extent[2]],
-            [extent[1], extent[2]],
-            [extent[1], extent[3]],
-            [extent[0], extent[3]],
-        ])
+        corners = np.array(
+            [
+                [extent[0], extent[2]],
+                [extent[1], extent[2]],
+                [extent[1], extent[3]],
+                [extent[0], extent[3]],
+            ]
+        )
         transformed_corners = proj.transform_points(ccrs.PlateCarree(), corners[:, 0], corners[:, 1])
         x_coords = transformed_corners[:, 0]
         y_coords = transformed_corners[:, 1]

@@ -1,17 +1,17 @@
 [project]
-name = "py-draw"
+name = "weather-map-renderer"
 version = "1.3.0"
-description = "气象数据可视化地图图片渲染服务"
+description = "Weather data visualization map rendering service - FastAPI + Matplotlib + Cartopy"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.12"
 license = { text = "MIT" }
-authors = [{ name = "py-draw team" }]
+authors = [{ name = "weather-map-renderer team" }]
 
 dependencies = [
     "aiohttp>=3.9.5",
     "apscheduler>=3.10.4",
     "cartopy>=0.22.0",
-    "cinrad>=1.9.1",
+    "cinrad @ git+https://github.com/CyanideCN/PyCINRAD.git@master",
     "fastapi>=0.112.2",
     "frykit>=0.6.7",
     "matplotlib>=3.8.4",
@@ -41,14 +41,17 @@ dev = [
 ]
 
 [project.scripts]
-py-draw = "main:main"
+weather-map-renderer = "main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.extra-build-dependencies]
-cinrad = ["numpy"]
+cinrad = ["numpy", "cython"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["api", "config", "models", "rendering", "services", "util"]
@@ -92,6 +95,9 @@ lines-after-imports = 2
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "util/radar/*.py" = ["N803"]  # radar库的变量名约定
+"models/base.py" = ["RUF001"]  # 中文Field description含全角标点
+"services/render_service.py" = ["TC001", "TRY002"]  # 类型注解导入暂不拆分 + 简单异常已够用
+"test_post_api.py" = ["RUF001"]  # 中文print含全角标点
 
 [tool.ruff.format]
 quote-style = "double"

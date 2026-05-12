@@ -6,7 +6,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - py_draw_data:/home/lizhan/tu
+      - py_draw_data:/app/zjaws
     env_file:
       - .env
     mem_limit: 2g

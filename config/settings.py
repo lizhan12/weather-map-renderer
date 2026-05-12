@@ -23,7 +23,7 @@ UNITS = {
 class Settings(BaseSettings):
     """应用全局配置, 从环境变量 (PYDRAW_ 前缀) 或 .env 文件加载."""
 
-    base_path: str = "/home/lizhan/tu"
+    base_path: str = "/home/tu"
 
     width: int = 700
     height: int = 700

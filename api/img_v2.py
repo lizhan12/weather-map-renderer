@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime
 
 import pandas as pd
@@ -231,7 +232,17 @@ async def get_img(
         raise HTTPException(status_code=500, detail=str(e)) from None
 
     if isinstance(image_stream, str):
-        return FileResponse(settings.img_data_path_resolved + "/" + image_stream)
+        file_path = settings.img_data_path_resolved + "/" + image_stream
+        if os.path.exists(file_path):
+            return FileResponse(file_path)
+        logging.warning(f"Cache file missing: {file_path}, re-rendering")
+        request_config["id"] = _generate_cache_id(request_config, code) + "_retry"
+        try:
+            image_stream = await _render_service.render(request_config)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from None
+        if isinstance(image_stream, str):
+            return FileResponse(settings.img_data_path_resolved + "/" + image_stream)
     image_stream.seek(0)
     return StreamingResponse(image_stream, media_type="image/png")
 

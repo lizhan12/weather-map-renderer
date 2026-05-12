@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from config import WS, windSign
+from config import WIND_SIGN, WS
 
 
 def draw_wind_barbs(ax, stations: list, config: dict, state: dict) -> None:
@@ -19,12 +19,12 @@ def draw_wind_barbs(ax, stations: list, config: dict, state: dict) -> None:
     extent = state.get("extent", [])
     margin = state.get("margin", [10, 10, 10, 10])
 
-    l = 0
+    value_offset = 0
     if config.get("show_name") and config.get("show_value"):
-        l = 1
+        value_offset = 1
 
     h = config.get("height", 700) - margin[0] - margin[2]
-    h = (extent[3] - extent[2] + 0.02) / h * 8 * l if len(extent) >= 4 else 0
+    h = (extent[3] - extent[2] + 0.02) / h * 8 * value_offset if len(extent) >= 4 else 0
 
     for station in stations:
         direction = station.get("dir")
@@ -35,8 +35,14 @@ def draw_wind_barbs(ax, stations: list, config: dict, state: dict) -> None:
         if not config.get("show_contourf", True):
             fontcolor = _get_wind_color(val, vals, colors)
         _draw_wind_marker(
-            ax, float(station["lon"]), float(station["lat"]) + h, val, direction,
-            config.get("wind_fontsize", 20), fontcolor, config,
+            ax,
+            float(station["lon"]),
+            float(station["lat"]) + h,
+            val,
+            direction,
+            config.get("wind_fontsize", 20),
+            fontcolor,
+            config,
         )
 
 
@@ -49,7 +55,7 @@ def _get_wind_font(v: float) -> str:
     Returns:
         风向符号字符, 超出范围返回 "K"
     """
-    for item in windSign:
+    for item in WIND_SIGN:
         if item[0] > float(v):
             return item[1]
     return "K"
@@ -103,11 +109,17 @@ def _draw_wind_marker(ax, lon, lat, val, direction, fontsize, fontcolor, config)
     if float(direction) > 360.0:
         return
     import cartopy.crs as ccrs
+
     project = ccrs.PlateCarree()
     ax.text(
-        lon, lat + 0.001, _get_wind_font(val),
-        color=fontcolor, transform=project,
-        va="baseline", ha="left", rotation_mode="anchor",
+        lon,
+        lat + 0.001,
+        _get_wind_font(val),
+        color=fontcolor,
+        transform=project,
+        va="baseline",
+        ha="left",
+        rotation_mode="anchor",
         fontproperties=_get_wind_font_properties(),
         rotation=360.0 - float(direction),
         fontsize=fontsize,
@@ -123,5 +135,6 @@ def _get_wind_font_properties():
     import os
 
     import matplotlib.font_manager as fm
+
     font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "font", "wind Bold.ttf")
     return fm.FontProperties(fname=font_path, size=50)

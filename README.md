@@ -1,6 +1,18 @@
-# py_draw
+# weather-map-renderer
+
+[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.112+-green.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 气象数据可视化地图图片渲染服务，基于 FastAPI + Matplotlib + Cartopy，将站点观测数据、NC 格点数据渲染为可视化地图图片。
+
+**English**: Weather data visualization map rendering service based on FastAPI + Matplotlib + Cartopy. Renders station observation data and NC grid data into visualized map images.
+
+## 效果展示
+
+### 温度填色图
+
+<img src="imgs/edc09bdf33878ca1_330700.png" width="400" alt="温度填色图" />
 
 ## 功能特性
 
@@ -11,31 +23,42 @@
 - 多进程渲染，支持并发请求
 - SM4 加密数据传输
 
+## 环境要求
+
+- **Python**: 3.10 或 3.11（不支持 3.12+）
+- **包管理器**: [uv](https://docs.astral.sh/uv/)（推荐）或 pip
+
 ## 快速开始
-
-### 环境要求
-
-- Python >= 3.10
-- [uv](https://docs.astral.sh/uv/) 包管理器
 
 ### 本地开发
 
 ```bash
-# 安装依赖
-make install
+# 1. 安装 uv（如果还没装）
+# Windows PowerShell:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# macOS/Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 安装开发依赖 + pre-commit
-make dev
+# 2. 克隆项目后进入目录
+cd weather-map-renderer
 
-# 配置环境变量
+# 3. 创建虚拟环境并安装依赖
+uv sync
+
+# 4. 安装开发依赖（可选）
+uv sync --dev
+
+# 5. 配置环境变量
 cp .env.example .env
-# 编辑 .env 填入实际配置
+# 用编辑器打开 .env 填入实际配置
 
-# 启动服务
-make run
+# 6. 启动服务
+uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-服务默认监听 `http://0.0.0.0:8001`。
+服务启动后访问：
+- API 文档：http://localhost:8001/docs
+- ReDoc 文档：http://localhost:8001/redoc
 
 ### Docker 部署
 
@@ -48,6 +71,25 @@ docker compose logs -f
 
 # 停止
 docker compose down
+```
+
+## 开发命令
+
+```bash
+# 代码格式化
+uv run ruff format .
+
+# 代码检查
+uv run ruff check .
+
+# 类型检查
+uv run mypy .
+
+# 运行测试
+uv run pytest tests/ -v
+
+# 运行测试并生成覆盖率
+uv run pytest tests/ -v --cov=.
 ```
 
 ## API 接口
@@ -116,9 +158,10 @@ GET /api/pic/img/{id}
 ## 项目结构
 
 ```
-py_draw/
+weather-map-renderer/
 ├── main.py                 # 应用入口
 ├── manage.py               # FastAPI 应用工厂
+├── pyproject.toml          # 项目配置（依赖、工具）
 ├── api/                    # API 层（参数接收和响应）
 │   └── img_v2.py           # 图片路由
 ├── models/                 # 数据模型层
@@ -141,23 +184,47 @@ py_draw/
 └── static/                 # 静态文件
 ```
 
-## 开发命令
+## 性能参考
 
-```bash
-make install    # 安装依赖
-make dev        # 安装开发依赖 + 初始化 pre-commit
-make lint       # 代码检查
-make format     # 代码格式化
-make test       # 运行测试
-make run        # 启动服务
-make clean      # 清理缓存
-```
+| 场景 | 并发数 | 平均耗时 | 吞吐量 |
+|------|--------|----------|--------|
+| 缓存命中 | 100 | 0.44s | 195 req/s |
+| 无缓存渲染 | 10 | 1.32s | 6.3 req/s |
+
+测试环境：4 渲染进程，28 核 CPU，2GB 内存。
 
 ## 技术栈
 
-- **Web 框架**: FastAPI + Uvicorn
-- **地图渲染**: Matplotlib + Cartopy
-- **空间计算**: Shapely + SciPy
-- **数据加密**: gmalglib (SM4)
-- **配置管理**: pydantic-settings
-- **包管理**: uv
+| 类别 | 技术 |
+|------|------|
+| Web 框架 | FastAPI + Uvicorn |
+| 地图渲染 | Matplotlib + Cartopy |
+| 空间计算 | Shapely + SciPy |
+| 数据加密 | gmalglib (SM4) |
+| 配置管理 | pydantic-settings |
+| 包管理 | uv |
+| 代码规范 | Ruff (Lint + Format) |
+
+## 依赖说明
+
+本项目使用 `uv` 进行依赖管理，依赖定义在 `pyproject.toml` 中：
+
+- **运行时依赖**: `[project.dependencies]`
+- **开发依赖**: `[dependency-groups.dev]`
+
+添加/移除依赖：
+
+```bash
+# 添加运行时依赖
+uv add <package>
+
+# 添加开发依赖
+uv add --dev <package>
+
+# 移除依赖
+uv remove <package>
+```
+
+## License
+
+[MIT](LICENSE)

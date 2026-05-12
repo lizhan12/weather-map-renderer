@@ -90,7 +90,13 @@ class DataService:
             logging.exception("request data failed")
             return None
 
-    async def get_face_data(self, axis: str = "SUM_PRE_12H_POINT", code: str = "330500", date_str: str = "20231105100000", start_time: str | None = None):
+    async def get_face_data(
+        self,
+        axis: str = "SUM_PRE_12H_POINT",
+        code: str = "330500",
+        date_str: str = "20231105100000",
+        start_time: str | None = None,
+    ):
         """获取面雨量数据, 根据降雨类型自动计算开始时间."""
         step = RAIN_PRE.get(axis)
         if step is None or step < 0:
@@ -158,7 +164,14 @@ class DataService:
 
         return np.array(vals), np.array(pos), stations
 
-    async def get_data(self, axis: str = "SUM_PRE_12H_POINT", code: str = "330500", date_str: str = "20230725100000", start_time: str | None = None, is_city: bool = False) -> tuple:
+    async def get_data(
+        self,
+        axis: str = "SUM_PRE_12H_POINT",
+        code: str = "330500",
+        date_str: str = "20230725100000",
+        start_time: str | None = None,
+        is_city: bool = False,
+    ) -> tuple:
         """获取并处理站点观测数据 (异步): 请求 -> SM4 解密 -> handle_data."""
         url = self._build_url(axis, code, date_str, start_time)
         TraceLogger.log("data_fetch")

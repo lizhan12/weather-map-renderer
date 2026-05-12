@@ -31,10 +31,12 @@ def init():
 
 def _warmup_matplotlib():
     import matplotlib
+
     matplotlib.use("agg")
     import matplotlib.font_manager as fm
 
     from rendering.paths import SIMHEI_FONT
+
     fm.fontManager.addfont(SIMHEI_FONT)
     matplotlib.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
     matplotlib.rcParams["axes.unicode_minus"] = False
@@ -43,6 +45,7 @@ def _warmup_matplotlib():
 
     import cartopy.crs as ccrs
     from matplotlib.figure import Figure
+
     fig = Figure(figsize=[1, 1], dpi=80)
     ax = fig.add_subplot(projection=ccrs.Mercator())
     ax.set_title("预热")

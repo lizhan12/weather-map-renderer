@@ -1,5 +1,6 @@
 from manage import create_app
 
+
 app = create_app("product")
 
 if __name__ == "__main__":
