@@ -141,7 +141,7 @@ GET /api/pic/img/{id}
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
-| `PYDRAW_BASE_PATH` | `/home/lizhan/tu` | 基础路径 |
+| `PYDRAW_BASE_PATH` | `/home/lizhan/weather-map-renderer` | 基础路径 |
 | `PYDRAW_WIDTH` | 700 | 图片默认宽度 |
 | `PYDRAW_HEIGHT` | 700 | 图片默认高度 |
 | `PYDRAW_CACHE_TTL` | 300 | 缓存过期时间（秒） |
