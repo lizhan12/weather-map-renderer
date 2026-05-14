@@ -11,6 +11,12 @@ from util.trace_logger import TraceLogger
 _SIMPLIFY_TOLERANCE = 0.01
 
 
+def set_simplify_tolerance(value: float) -> None:
+    """设置 shapefile 序列化的几何简化容差 (默认 0.01)."""
+    global _SIMPLIFY_TOLERANCE
+    _SIMPLIFY_TOLERANCE = value
+
+
 class ShapeService:
     """Shapefile 读取与缓存服务, 提供区划边界/几何/属性的序列化数据."""
 

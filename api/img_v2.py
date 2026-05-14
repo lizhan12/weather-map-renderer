@@ -22,7 +22,16 @@ from util.trace_logger import TraceLogger
 
 router = APIRouter(tags=["图片"])
 
-all_def = pd.DataFrame(codes)
+_all_def_cache: pd.DataFrame | None = None
+
+
+def _get_all_def() -> pd.DataFrame:
+    """惰性加载全部区划代码表 (仅在 gen_all 分支使用时初始化)."""
+    global _all_def_cache
+    if _all_def_cache is None:
+        _all_def_cache = pd.DataFrame(codes)
+    return _all_def_cache
+
 
 _shape_service = ShapeService(
     shape_dir=settings.shape_path_resolved,
@@ -306,7 +315,7 @@ async def create_img(
             df["code"] = df["Admin_Code_CHN"].str.slice(0, 6)
 
         if is_city:
-            codedf = all_def[all_def["code"].str.contains(code[0:4])].copy()
+            codedf = _get_all_def()[_get_all_def()["code"].str.contains(code[0:4])].copy()
             codedf["code1"] = codedf["code"].apply(lambda x: str(x)[0:6])
             grouped = codedf.groupby(by="code1")
             if request_config.get("show_name") is None:
@@ -329,7 +338,7 @@ async def create_img(
                 all_keys.append(name)
 
         request_config["gen"] = True
-        codedf = all_def[all_def["code"].str.contains(code[0:6])].copy()
+        codedf = _get_all_def()[_get_all_def()["code"].str.contains(code[0:6])].copy()
         grouped = codedf.groupby(by="code")
         parentconfig["is_city"] = False
 

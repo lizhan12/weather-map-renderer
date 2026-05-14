@@ -28,6 +28,8 @@ from util.trace_logger import TraceLogger
 
 project = ccrs.PlateCarree()
 _interpolator = Interpolator()
+_logo_cache: dict[str, np.ndarray] = {}
+_LOGO_SCALE = 0.25
 
 
 def deserialize_shapefile_data(data: dict) -> tuple:
@@ -268,24 +270,34 @@ def render_nc_in_subprocess(bounds, records_data, lon, lat, vals, code, data_typ
     sub_lat = lat[min_lat:max_lat:y_step]
     sub_lon = lon[min_lon:max_lon:x_step]
 
+    n_lat = len(sub_lat)
+    n_lon = len(sub_lon)
+
+    if config.get("is_clip", True):
+        grid_points = np.column_stack([np.tile(sub_lon, n_lat), np.repeat(sub_lat, n_lon)])
+        inside = paths.contains_points(grid_points).reshape(n_lat, n_lon)
+    else:
+        inside = np.ones((n_lat, n_lon), dtype=bool)
+
     arr_vals = []
     lons_list = []
     lats_list = []
     us_list = []
     vs_list = []
 
-    for i in range(len(sub_lat)):
-        for j in range(len(sub_lon)):
-            if not config.get("is_clip", True) or paths.contains_point([sub_lon[j], sub_lat[i]]):
-                if config.get("show_value"):
-                    if data_type == "rain" and config.get("hide_rain_zero") and sub_vals[i][j] <= 0.0:
-                        continue
-                    arr_vals.append([sub_lon[j], sub_lat[i], sub_vals[i][j]])
-                if config.get("show_wind") and sub_dirs is not None:
-                    lons_list.append(sub_lon[j])
-                    lats_list.append(sub_lat[i])
-                    us_list.append(u[i][j])
-                    vs_list.append(v[i][j])
+    for i in range(n_lat):
+        for j in range(n_lon):
+            if not inside[i, j]:
+                continue
+            if config.get("show_value"):
+                if data_type == "rain" and config.get("hide_rain_zero") and sub_vals[i][j] <= 0.0:
+                    continue
+                arr_vals.append([sub_lon[j], sub_lat[i], sub_vals[i][j]])
+            if config.get("show_wind") and sub_dirs is not None:
+                lons_list.append(sub_lon[j])
+                lats_list.append(sub_lat[i])
+                us_list.append(u[i][j])
+                vs_list.append(v[i][j])
 
     if len(us_list) > 0:
         ax.barbs(
@@ -536,19 +548,22 @@ def _get_index(bounds, lat, lon):
 def _set_logo(fig, config):
     """在无数据时设置居中的天气类型 Logo (降雨/雷电/降雪)."""
     type_ = config.get("type", config.get("data_type", ""))
-    tmp_img = RAIN_IMG
+    img_key = None
     if type_ == "light":
-        tmp_img = LIGHT_IMG
+        img_key = "light"
     elif type_ == "snow":
-        tmp_img = SNOW_IMG
+        img_key = "snow"
     elif type_ == "rain" and config.get("show_no_rain_logo"):
-        tmp_img = RAIN_IMG
+        img_key = "rain"
     else:
         return
 
-    scale = 0.25
-    img = Image.open(tmp_img)
-    snow = ndimage.zoom(np.array(img), (scale, scale, 1))
+    if img_key not in _logo_cache:
+        path_map = {"light": LIGHT_IMG, "rain": RAIN_IMG, "snow": SNOW_IMG}
+        img = Image.open(path_map[img_key])
+        _logo_cache[img_key] = ndimage.zoom(np.array(img), (_LOGO_SCALE, _LOGO_SCALE, 1))
+
+    snow = _logo_cache[img_key]
     img_height, img_width = snow.shape[:2]
     fig_width, fig_height = fig.get_size_inches() * fig.dpi
     center_x = fig_width / 2 - img_width / 2

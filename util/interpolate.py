@@ -23,13 +23,13 @@ class Interpolator:
         """
         lat_range = max_lat - min_lat
         lon_range = max_lon - min_lon
-        latstep = 0.0005 if lat_range < 0.1 else 0.02
-        lonstep = 0.0005 if lon_range < 0.1 else 0.02
-        lonstep = round((max_lon - min_lon) / lonstep)
-        latstep = round((max_lat - min_lat) / latstep)
+        lat_step = 0.0005 if lat_range < 0.1 else 0.02
+        lon_step = 0.0005 if lon_range < 0.1 else 0.02
+        lon_count = round((max_lon - min_lon) / lon_step)
+        lat_count = round((max_lat - min_lat) / lat_step)
         return np.meshgrid(
-            np.linspace(min_lon, max_lon, lonstep),
-            np.linspace(min_lat, max_lat, latstep),
+            np.linspace(min_lon, max_lon, lon_count),
+            np.linspace(min_lat, max_lat, lat_count),
         )
 
     def interpolate_grid(
@@ -118,7 +118,7 @@ class Interpolator:
         radius: float = 0.1,
         iterations: int = 3,
     ) -> np.ndarray:
-        """Cressman 插值, 基于影响半径的逐步逼近方法.
+        """Cressman 插值, 基于影响半径的逐步逼近方法 (向量化实现).
 
         Args:
             lons: 站点经度数组
@@ -131,17 +131,17 @@ class Interpolator:
         Returns:
             插值结果二维数组
         """
-        grid = np.column_stack([mesh[0].ravel(), mesh[1].ravel()])
+        grid_lon, grid_lat = mesh
         sp = np.column_stack([lons, lats])
+        gp = np.column_stack([grid_lon.ravel(), grid_lat.ravel()])
         r2 = radius * radius
 
-        result = np.zeros(len(grid))
+        result = np.zeros(len(gp))
         for _ in range(iterations):
-            for i, gp in enumerate(grid):
-                d2 = np.sum((sp - gp) ** 2, axis=1)
-                w = np.where(d2 < r2, (r2 - d2) / (r2 + d2), 0.0)
-                ws = np.sum(w)
-                if ws > 0:
-                    result[i] = np.sum(vals * w) / ws
+            d2 = np.sum((sp[:, np.newaxis, :] - gp[np.newaxis, :, :]) ** 2, axis=2)
+            w = np.where(d2 < r2, (r2 - d2) / (r2 + d2), 0.0)
+            ws = np.sum(w, axis=0)
+            mask = ws > 0
+            result[mask] = np.sum(vals[:, np.newaxis] * w, axis=0)[mask] / ws[mask]
 
-        return result.reshape(mesh[0].shape)
+        return result.reshape(grid_lon.shape)

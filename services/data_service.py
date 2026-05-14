@@ -18,6 +18,7 @@ df_towns = pd.DataFrame(towns)
 
 _EMPTY_VALS = np.array([])
 _EMPTY_POS = np.array([]).reshape(0, 2)
+_DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 
 class DataService:
@@ -40,6 +41,7 @@ class DataService:
         parsed = urlparse(self.prefix)
         self._referer = f"{parsed.scheme}://{parsed.netloc}/"
         self._origin = f"{parsed.scheme}://{parsed.netloc}"
+        self._session = aiohttp.ClientSession(timeout=_DEFAULT_TIMEOUT)
 
     def _build_url(self, alias: str, code: str, date_str: str, start_time: str | None = None) -> str:
         """构建带签名的数据请求 URL."""
@@ -81,14 +83,16 @@ class DataService:
             "Origin": self._origin,
         }
         try:
-            async with (
-                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session,
-                session.get(url, headers=headers) as res,
-            ):
+            async with self._session.get(url, headers=headers) as res:
                 return await res.json()
         except Exception:
             logging.exception("request data failed")
             return None
+
+    async def close(self) -> None:
+        """关闭 aiohttp 会话, 释放连接池."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     async def get_face_data(
         self,

@@ -45,12 +45,14 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
         x, y = projection.transform_point(lon, lat, ccrs.PlateCarree())
         arr.append([x, y, station["name"], station["val"]])
 
-    if show_name:
-        for item in arr:
+    for item in arr:
+        x, y, name, val = item
+
+        if show_name:
             ax.text(
-                item[0],
-                item[1],
-                item[2],
+                x,
+                y,
+                name,
                 color=config.get("txt_fontcolor", "#666"),
                 verticalalignment="bottom",
                 horizontalalignment="center",
@@ -58,12 +60,11 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
                 transform=trans_name,
             )
 
-    if show_value:
-        for item in arr:
+        if show_value:
             ax.text(
-                item[0],
-                item[1],
-                item[3],
+                x,
+                y,
+                val,
                 color=config.get("val_fontcolor", "#666"),
                 verticalalignment="top",
                 horizontalalignment="center",
@@ -71,11 +72,10 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
                 transform=trans_value,
             )
 
-    if show_point:
-        for item in arr:
+        if show_point:
             ax.scatter(
-                item[0],
-                item[1],
+                x,
+                y,
                 s=8,
                 transform=trans_point,
                 color=config.get("point_color", "#666"),
