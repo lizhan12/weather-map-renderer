@@ -102,7 +102,7 @@ GET /api/pic/{code}/{datestr}/{data_type}/{axis}
 
 | 参数 | 说明 | 示例 |
 |------|------|------|
-| code | 行政区号6位 | 330700 |
+| code | 行政区号6位 | 330100 |
 | datestr | 日期时间 | 20260510080000 |
 | data_type | 数据类型 | tem / rain / wind |
 | axis | 数据别名 | TEM_H_POINT |
@@ -135,16 +135,16 @@ POST /api/pic/{code}/{data_type}
 {
   "data": [
     {
-      "Station_Id_C": "K6322",
-      "Station_Name": "江滨小学",
-      "Cnty": "婺城区",
-      "City": "金华市",
-      "Admin_Code_CHN": "330702",
+      "Station_Id_C": "K0001",
+      "Station_Name": "示例站点",
+      "Cnty": "某区",
+      "City": "某市",
+      "Admin_Code_CHN": "330100",
       "Town": "-",
-      "V": "32.5",
-      "Lon": "119.6528",
-      "Lat": "29.0897",
-      "Province": "浙江省",
+      "V": "25.0",
+      "Lon": "120.0000",
+      "Lat": "30.0000",
+      "Province": "某省",
       "Datetime": "2026-05-07 08:00:00"
     }
   ],
@@ -166,20 +166,20 @@ POST /api/pic/{code}/{data_type}
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `Station_Id_C` | string | 是 | 站点编号，如 `"K6322"` |
-| `Station_Name` | string | 是 | 站点名称，如 `"江滨小学"` |
+| `Station_Id_C` | string | 是 | 站点编号，如 `"K0001"` |
+| `Station_Name` | string | 是 | 站点名称，如 `"示例站点"` |
 | `Cnty` | string | 是 | 区县名称 |
 | `City` | string | 是 | 市级名称 |
-| `Admin_Code_CHN` | string | 是 | 行政区划代码（6位），如 `"330702"` |
+| `Admin_Code_CHN` | string | 是 | 行政区划代码（6位），如 `"330100"` |
 | `Town` | string | 否 | 乡镇名称，无乡镇填 `"-"` 或 `null` |
-| `V` | string | 是 | 观测值，如温度 `"32.5"`、降雨量 `"12.0"` |
-| `Lon` | string | 是 | 经度，如 `"119.6528"` |
-| `Lat` | string | 是 | 纬度，如 `"29.0897"` |
+| `V` | string | 是 | 观测值，如温度 `"25.0"`、降雨量 `"12.0"` |
+| `Lon` | string | 是 | 经度，如 `"120.0000"` |
+| `Lat` | string | 是 | 纬度，如 `"30.0000"` |
 | `Province` | string | 否 | 省份名称 |
 | `Datetime` | string | 否 | 观测时间 |
 | `D` | string | 风速专用 | 风向角度（0-360），仅风要素需要 |
 
-> 项目根目录的 `test_data_330700.json` 可作为参考样例。
+> 项目根目录的测试数据文件可作为参考样例。
 
 #### 渲染参数说明
 
@@ -206,9 +206,9 @@ POST /api/pic/{code}/{data_type}
 ```json
 {
   "DS": [
-    {"330700": "c70f38239f09abae_330700.png"},
-    {"330702": "66bafb016673aa5a_330702.png"},
-    {"330703": "7922147451536887_330703.png"}
+    {"330100": "c70f38239f09abae_330100.png"},
+    {"330101": "66bafb016673aa5a_330101.png"},
+    {"330102": "7922147451536887_330102.png"}
   ],
   "returnCode": "0",
   "returnMessage": "成功"
