@@ -315,7 +315,7 @@ async def create_img(
             df["code"] = df["Admin_Code_CHN"].str.slice(0, 6)
 
         if is_city:
-            codedf = _get_all_def()[_get_all_def()["code"].str.contains(code[0:4])].copy()
+            codedf = _get_all_def()[_get_all_def()["code"].str.startswith(code[0:4])].copy()
             codedf["code1"] = codedf["code"].apply(lambda x: str(x)[0:6])
             grouped = codedf.groupby(by="code1")
             if request_config.get("show_name") is None:
@@ -334,11 +334,13 @@ async def create_img(
                 sub_config["data"] = dat
                 if infoconfig:
                     sub_config = {**sub_config, **infoconfig}
+                sub_config.pop("id", None)
+                sub_config["id"] = _generate_cache_id(sub_config, name)
                 all_tasks.append(_render_service.render(sub_config))
                 all_keys.append(name)
 
         request_config["gen"] = True
-        codedf = _get_all_def()[_get_all_def()["code"].str.contains(code[0:6])].copy()
+        codedf = _get_all_def()[_get_all_def()["code"].str.startswith(code[0:6])].copy()
         grouped = codedf.groupby(by="code")
         parentconfig["is_city"] = False
 
@@ -356,6 +358,8 @@ async def create_img(
             sub_config["is_city"] = False
             sub_config["data"] = arr
             sub_config = {**sub_config, **infoconfig} if infoconfig else {**sub_config, **parentconfig}
+            sub_config.pop("id", None)
+            sub_config["id"] = _generate_cache_id(sub_config, name)
             all_tasks.append(_render_service.render(sub_config))
             all_keys.append(name)
 
@@ -364,7 +368,7 @@ async def create_img(
         for key, result in zip(all_keys, all_results, strict=False):
             if isinstance(result, Exception):
                 logging.error(f"Render error for {key}: {result}", exc_info=True)
-                ids.append({key: None})
+                ids.append({key: None, "error": f"{type(result).__name__}: {result}"})
             else:
                 ids.append({key: result})
     else:

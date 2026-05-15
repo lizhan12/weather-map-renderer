@@ -129,6 +129,104 @@ POST /api/pic/{code}/{data_type}
 
 请求体为 JSON，包含站点数据数组。POST 请求自动保存图片文件，返回文件 ID。
 
+#### 请求体格式
+
+```json
+{
+  "data": [
+    {
+      "Station_Id_C": "K6322",
+      "Station_Name": "江滨小学",
+      "Cnty": "婺城区",
+      "City": "金华市",
+      "Admin_Code_CHN": "330702",
+      "Town": "-",
+      "V": "32.5",
+      "Lon": "119.6528",
+      "Lat": "29.0897",
+      "Province": "浙江省",
+      "Datetime": "2026-05-07 08:00:00"
+    }
+  ],
+  "datestr": "20260507080000",
+  "gen_all": true,
+  "is_has_data": true,
+  "show_contourf": true,
+  "show_value": true,
+  "show_point": true,
+  "show_town": true,
+  "show_town_name": true,
+  "is_clip": true,
+  "width": 700,
+  "height": 700
+}
+```
+
+#### 数据字段说明
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `Station_Id_C` | string | 是 | 站点编号，如 `"K6322"` |
+| `Station_Name` | string | 是 | 站点名称，如 `"江滨小学"` |
+| `Cnty` | string | 是 | 区县名称 |
+| `City` | string | 是 | 市级名称 |
+| `Admin_Code_CHN` | string | 是 | 行政区划代码（6位），如 `"330702"` |
+| `Town` | string | 否 | 乡镇名称，无乡镇填 `"-"` 或 `null` |
+| `V` | string | 是 | 观测值，如温度 `"32.5"`、降雨量 `"12.0"` |
+| `Lon` | string | 是 | 经度，如 `"119.6528"` |
+| `Lat` | string | 是 | 纬度，如 `"29.0897"` |
+| `Province` | string | 否 | 省份名称 |
+| `Datetime` | string | 否 | 观测时间 |
+| `D` | string | 风速专用 | 风向角度（0-360），仅风要素需要 |
+
+> 项目根目录的 `test_data_330700.json` 可作为参考样例。
+
+#### 渲染参数说明
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `gen_all` | bool | false | 是否生成所有下级区划（市级→区县，区级→乡镇） |
+| `is_has_data` | bool | false | 数据来源于 POST body（与 GET 模式互斥） |
+| `show_contourf` | bool | true | 显示填色图 |
+| `show_value` | bool | true | 显示站点数值标签 |
+| `show_point` | bool | false | 显示站点位置标记点 |
+| `show_town` | bool | false | 显示乡镇边界 |
+| `show_town_name` | bool | false | 显示乡镇名称 |
+| `show_wind` | bool | false | 显示风向杆（风要素专用） |
+| `is_clip` | bool | true | 按行政区边界裁剪图片 |
+| `hide_rain_zero` | bool | false | 隐藏零值站点（降雨要素专用） |
+| `show_name` | bool | 市级 true / 区级 false | 显示站点名称 |
+| `width` | int | 700 | 图片宽度（px） |
+| `height` | int | 700 | 图片高度（px） |
+| `datestr` | string | - | 数据时间，用于生成文件名 |
+| `color` | string | - | 色标编号（降雨要素专用，如 `"1"`） |
+
+#### 响应格式
+
+```json
+{
+  "DS": [
+    {"330700": "c70f38239f09abae_330700.png"},
+    {"330702": "66bafb016673aa5a_330702.png"},
+    {"330703": "7922147451536887_330703.png"}
+  ],
+  "returnCode": "0",
+  "returnMessage": "成功"
+}
+```
+
+`DS` 为数组，包含每个区划代码对应的图片 ID。`gen_all=true` 时返回多张图片，失败项的值为 `null`。
+
+#### 数据类型映射
+
+| data_type | 说明 | 对应请求参数 |
+|-----------|------|-------------|
+| `tem` | 温度 | - |
+| `rain` | 降雨 | `hide_rain_zero: true`, `color: "1"` |
+| `wind` | 风 | `show_wind: true` |
+| `vis` | 能见度 | - |
+| `rh` | 湿度 | - |
+
 ### 获取已保存图片
 
 ```

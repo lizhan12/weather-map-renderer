@@ -57,7 +57,7 @@ def _draw_rank_table(ax, head: list | None, config: dict) -> None:
 
     arr = [["Top" + str(config.get("top")) + " " + config.get("unit", "")]]
     for item in head:
-        arr.append([item["name"] + ":" + str(item["val"])])
+        arr.append([item.get("name", "") + ":" + str(item["val"])])
 
     height = config.get("height", 700)
     loc[3] = ((config.get("top", 1)) * 16.0 + 25) / (height * 0.5)
@@ -98,7 +98,7 @@ def _draw_face_rainfall_table(ax, face: list | None, config: dict) -> None:
         name = "市级"
     arr.append(["各" + name + "面雨量(毫米)"])
     for item in face:
-        arr.append([item["name"] + ":" + str(item["val"])])
+        arr.append([item.get("name", "") + ":" + str(item["val"])])
 
     loc[3] = (len(arr) * 25.0) / height
 

@@ -270,8 +270,22 @@ class DataService:
             df = df[df["code"].str.contains(config["code"])]
 
         if config and config.get("show_town") and not config.get("is_city"):
-            df = df.groupby(by=["town"]).min() if config.get("axis") in SHOW_MINS else df.groupby(by=["town"]).max()
-            df = pd.merge(df_towns, df, on="town", how="inner")
+            df["val"] = pd.to_numeric(df["val"], errors="coerce")
+            df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+            df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+            if "dir" in df.columns:
+                df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
+            df = df.dropna(subset=["town"])
+            if len(df) == 0:
+                return [], show_empty
+            agg_cols = ["town", "val", "lon", "lat"]
+            if "dir" in df.columns:
+                agg_cols.append("dir")
+            if config.get("axis") in SHOW_MINS:
+                df_agg = df[agg_cols].groupby(by=["town"]).min()
+            else:
+                df_agg = df[agg_cols].groupby(by=["town"]).max()
+            df = pd.merge(df_towns, df_agg, on="town", how="inner")
             if config.get("show_real_station"):
                 df.rename(columns={"lon_y": "lon", "lat_y": "lat"}, inplace=True)
             else:

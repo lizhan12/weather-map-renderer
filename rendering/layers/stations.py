@@ -43,7 +43,7 @@ def draw_stations(ax, stations: list, config: dict, state: dict) -> None:
     for station in stations:
         lon, lat = float(station["lon"]), float(station["lat"])
         x, y = projection.transform_point(lon, lat, ccrs.PlateCarree())
-        arr.append([x, y, station["name"], station["val"]])
+        arr.append([x, y, station.get("name", ""), station["val"]])
 
     for item in arr:
         x, y, name, val = item
