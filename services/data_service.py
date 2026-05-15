@@ -285,11 +285,14 @@ class DataService:
                 df_agg = df[agg_cols].groupby(by=["town"]).min()
             else:
                 df_agg = df[agg_cols].groupby(by=["town"]).max()
-            df = pd.merge(df_towns, df_agg, on="town", how="inner")
+            df = pd.merge(df_towns, df_agg, on="town", how="right", suffixes=("_town", ""))
             if config.get("show_real_station"):
-                df.rename(columns={"lon_y": "lon", "lat_y": "lat"}, inplace=True)
+                df["lon"] = df["lon"].fillna(df["lon_town"])
+                df["lat"] = df["lat"].fillna(df["lat_town"])
             else:
-                df.rename(columns={"lon_x": "lon", "lat_x": "lat"}, inplace=True)
+                df["lon"] = df["lon_town"].fillna(df["lon"])
+                df["lat"] = df["lat_town"].fillna(df["lat"])
+            df = df.drop(columns=["lon_town", "lat_town"], errors="ignore")
             return list(df.to_dict(orient="index").values()), show_empty
 
         df = df.query('id.str.startswith("5")')
