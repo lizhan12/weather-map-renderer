@@ -1,13 +1,11 @@
-from config.area_config import AREAS, ELS, RAIN_PRE, SHOW_MINS, get_area_layout
+from config.area_config import AREAS, RAIN_PRE, SHOW_MINS, get_area_layout
 from config.color_maps import get_color_map, rgb_to_hex
-from config.settings import MARGIN_OBJ, UNITS, settings
+from config.settings import UNITS, settings
 from config.wind import WIND_SIGN, WS
 
 
 __all__ = [
     "AREAS",
-    "ELS",
-    "MARGIN_OBJ",
     "RAIN_PRE",
     "SHOW_MINS",
     "UNITS",

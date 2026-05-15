@@ -4,13 +4,6 @@ from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-MARGIN_OBJ = {
-    "bottom": (10, 10, 10, 10),
-    "top": (10, 10, 10, 10),
-    "left": (10, 10, 10, 10),
-    "right": (10, 10, 10, 10),
-}
-
 UNITS = {
     "vis": "能见度(m)",
     "rain": "降雨(毫米)",

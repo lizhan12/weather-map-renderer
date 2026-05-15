@@ -167,12 +167,6 @@ SHOW_MINS = [
     "PRE_H_BY_H",
 ]
 
-ELS = {
-    "wind": ["WIN_S_INST_H_POINT", "WIN_S_INST_MAX_1H", "WIN_S_INST_MAX_3H"],
-    "rain": ["SUM_PRE_1H_POINT", "SUM_PRE_3H_POINT", "SUM_PRE_12H_POINT", "SUM_PRE_12H_POINT"],
-    "tem": ["TEM_MAX_1H", "TEM_MIN_1H", "TEM_H_POINT", "TEM_MAX_24H", "TEM_MIN_24H"],
-}
-
 RAIN_PRE = {
     "SUM_PRE_5MI": 5,
     "SUM_PRE_10MI": 10,
