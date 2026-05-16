@@ -1,357 +1,244 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
-import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
-from concurrent.futures.process import BrokenProcessPool
-from io import BytesIO
 
-from config.settings import settings
+import pandas as pd
+
+from config import settings
 from services.data_service import DataService
 from services.shape_service import ShapeService
-from util.trace import TraceContext
-from util.trace_logger import TraceLogger
+from util.file_dir_io import get_file_name
 
+
+MAX_QUEUE_SIZE = 32
 
 _process_pool: ProcessPoolExecutor | None = None
-_cache_write_count = 0
-_CLEANUP_INTERVAL = 20
-_cleanup_lock = threading.Lock()
-_is_cleaning = False
-
-
-def _cache_path(cache_key: str) -> str:
-    """拼接缓存文件完整路径."""
-    return os.path.join(settings.img_data_path_resolved, f"{cache_key}.png")
-
-
-def _cache_exists(cache_key: str) -> bool:
-    """检查缓存文件是否存在且未过期, 过期则删除."""
-    path = _cache_path(cache_key)
-    if not os.path.exists(path):
-        return False
-    if time.time() - os.path.getmtime(path) < settings.cache_ttl:
-        return True
-    os.remove(path)
-    return False
-
-
-def _cleanup_cache(cache_dir: str) -> None:
-    """在后台线程中清理过期缓存文件, 同一时刻只允许一个清理线程运行."""
-    global _is_cleaning
-
-    with _cleanup_lock:
-        if _is_cleaning:
-            return
-        _is_cleaning = True
-
-    try:
-        now = time.time()
-        ttl = settings.cache_ttl
-        files = []
-        for f in os.listdir(cache_dir):
-            if not f.endswith(".png"):
-                continue
-            path = os.path.join(cache_dir, f)
-            try:
-                mtime = os.path.getmtime(path)
-                if now - mtime >= ttl:
-                    files.append((mtime, path))
-            except OSError:
-                pass
-
-        files.sort()
-        for _, path in files:
-            with contextlib.suppress(OSError):
-                os.remove(path)
-    finally:
-        with _cleanup_lock:
-            _is_cleaning = False
-
-
-def _cache_set(cache_key: str, data: bytes) -> None:
-    """将图片数据写入 imgs 目录, 每隔 _CLEANUP_INTERVAL 次写入触发清理."""
-    global _cache_write_count
-
-    cache_dir = settings.img_data_path_resolved
-    os.makedirs(cache_dir, exist_ok=True)
-    with open(os.path.join(cache_dir, f"{cache_key}.png"), "wb") as f:
-        f.write(data)
-
-    _cache_write_count += 1
-    if _cache_write_count % _CLEANUP_INTERVAL != 0:
-        return
-
-    threading.Thread(target=_cleanup_cache, args=(cache_dir,), daemon=True).start()
-
-
-def _init_subprocess():
-    """子进程初始化: 配置 matplotlib 后端/字体, 并预热 cartopy 渲染管线."""
-    import matplotlib
-
-    matplotlib.use("agg")
-    import matplotlib.font_manager as fm
-
-    from rendering.paths import SIMHEI_FONT
-
-    fm.fontManager.addfont(SIMHEI_FONT)
-    matplotlib.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
-    matplotlib.rcParams["axes.unicode_minus"] = False
-
-    from io import BytesIO as _Buf
-
-    import cartopy.crs as ccrs
-    from matplotlib.figure import Figure
-    from shapely.geometry import Polygon
-
-    fig = Figure(figsize=[4, 4], dpi=80)
-    ax = fig.add_subplot(projection=ccrs.Mercator())
-    ax.set_extent([118.0, 123.0, 27.0, 31.5], crs=ccrs.PlateCarree())
-    ax.set_title("预热")
-    test_geom = Polygon([(119, 28), (120, 28), (120, 29), (119, 29)])
-    ax.add_geometries([test_geom], crs=ccrs.PlateCarree(), facecolor="none", edgecolor="#333", linewidth=1.0)
-    buf = _Buf()
-    fig.savefig(buf, format="png")
-    fig.clear()
-    logging.info("subprocess warmup completed")
+_queue: asyncio.Queue | None = None
 
 
 def _get_process_pool() -> ProcessPoolExecutor:
-    """获取或创建渲染进程池, 崩溃时自动重建."""
     global _process_pool
     if _process_pool is None:
-        max_workers = settings.render_workers or min(os.cpu_count() or 1, settings.render_max_workers)
-        _process_pool = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_subprocess)
+        max_workers = settings.render_workers if settings.render_workers > 0 else settings.render_max_workers
+        _process_pool = ProcessPoolExecutor(
+            max_workers=max_workers,
+            initializer=_init_worker,
+        )
     return _process_pool
 
 
-def _should_save(config: dict, station_count: int) -> bool:
-    """判断是否应返回文件名而非字节流: POST 请求或站点数 >= 10."""
-    return config.get("is_has_data") or station_count >= 10
+async def shutdown_render_service():
+    global _process_pool
+    if _process_pool is not None:
+        _process_pool.shutdown(wait=True)
+        _process_pool = None
+    _queue = None
+
+
+def _init_worker():
+    import matplotlib
+
+    matplotlib.use("agg")
+    import gc
+
+    gc.disable()
+
+
+def _sub_process_serialize_shape(code: str, tail: str):
+    """子进程版本 shape 序列化, 独立创建 ShapeService 避免跨进程共享."""
+    from services.shape_service import ShapeService
+
+    ss = ShapeService(shape_dir=settings.shape_path_resolved, areas={})
+    return ss.get_serialized(code, tail)
+
+
+def _cache_get(key):
+    try:
+        file_name = get_file_name(key)
+        if os.path.exists(file_name) and time.time() - os.stat(file_name).st_mtime < settings.cache_ttl:
+            with open(file_name, "rb") as f:
+                return f.read()
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set(key, content):
+    try:
+        file_name = get_file_name(key)
+        _clean_old_files(settings.cache_max_files)
+        with open(file_name, "wb") as f:
+            f.write(content)
+    except Exception:
+        pass
+
+
+def _clean_old_files(max_files: int):
+    try:
+        cache_dir = settings.img_data_path_resolved
+        if not os.path.isdir(cache_dir):
+            return
+        files = [
+            (os.path.join(cache_dir, f), os.path.getmtime(os.path.join(cache_dir, f)))
+            for f in os.listdir(cache_dir)
+            if f.endswith(".png")
+        ]
+        if len(files) > max_files:
+            files.sort(key=lambda x: x[1])
+            for path, _ in files[: len(files) - max_files]:
+                os.remove(path)
+    except Exception:
+        pass
 
 
 class RenderService:
-    """渲染服务: 协调数据获取/shapefile 加载/子进程渲染/缓存管理."""
+    """无状态渲染服务, 组合 DataService/ShapeService 并提供统一的 render 接口."""
 
     def __init__(self, shape_service: ShapeService, data_service: DataService):
-        """初始化渲染服务.
+        self.shape_service = shape_service
+        self.data_service = data_service
 
-        Args:
-            shape_service: shapefile 服务实例
-            data_service: 数据服务实例
-        """
-        self._shape_service = shape_service
-        self._data_service = data_service
+    @property
+    def cache_size(self) -> int:
+        try:
+            return len([f for f in os.listdir(settings.img_data_path_resolved) if f.endswith(".png")])
+        except Exception:
+            return 0
 
-    async def render(self, config: dict) -> BytesIO | str:
-        """执行完整的渲染流程: 缓存检查 -> 数据获取 -> shapefile 加载 -> 子进程渲染 -> 缓存写入.
+    async def render(self, config):
+        if config.get("trace_id") is None:
+            config["trace_id"] = config.get("id") or ""
 
-        Args:
-            config: 渲染配置字典, 需包含 id/code/type/axis/datestr 等键
+        if config.get("id") is not None:
+            cache = _cache_get(config.get("id"))
+            if cache is not None:
+                logging.info("Render cache hit: %s", config.get("id"))
+                import io
 
-        Returns:
-            BytesIO (直接返回图片) 或 str (返回文件名, should_save 模式)
+                return io.BytesIO(cache)
 
-        Raises:
-            Exception: 数据获取失败或边界数据缺失
-        """
-        t_start = time.time()
-        code = str(config.get("code", ""))
-        cache_key = config["id"]
-
-        if _cache_exists(cache_key):
-            logging.info(f"[PERF] cache hit: {time.time() - t_start:.3f}s")
-            TraceLogger.log("response_sent", "cache_hit")
-            return f"{cache_key}.png"
-
-        loop = asyncio.get_running_loop()
-
-        shape_tasks: dict[str, asyncio.Task] = {}
-        shape_tasks["main_shape_data"] = loop.run_in_executor(None, self._shape_service.get_serialized, code, "_county")
-        if config.get("is_city"):
-            shape_tasks["city_shape_data"] = loop.run_in_executor(None, self._shape_service.get_serialized, code, "")
-        if config.get("show_town") and len(code) < 8:
-            shape_tasks["town_shape_data"] = loop.run_in_executor(
-                None, self._shape_service.get_serialized, code, "_town"
-            )
-
-        if config.get("is_has_data"):
-            vals, pos, stations = self._data_service.handle_data(
-                config.get("data", []), code, config.get("is_city", False)
-            )
-            TraceLogger.log("data_process", f"stations={len(stations)}")
-            t_parallel = time.time()
-            TraceLogger.log("shape_serialize")
-            shape_results = await asyncio.gather(*shape_tasks.values())
-            logging.info(f"[PERF] get_shape: {time.time() - t_parallel:.3f}s, vals={len(vals)}")
-        else:
-            data_task = self._data_service.get_data(
-                config.get("axis", ""),
-                code,
-                config.get("datestr"),
-                config.get("start_time"),
-                config.get("is_city", False),
-            )
-            t_parallel = time.time()
-            TraceLogger.log("shape_serialize")
-            data_result, shape_results = await asyncio.gather(
-                data_task,
-                asyncio.gather(*shape_tasks.values()),
-            )
-            vals, pos, stations = data_result
-            logging.info(f"[PERF] get_data+get_shape parallel: {time.time() - t_parallel:.3f}s, vals={len(vals)}")
-
-        shape_map = dict(zip(shape_tasks.keys(), shape_results, strict=True))
-        main_shape_data = shape_map.get("main_shape_data")
-        city_shape_data = shape_map.get("city_shape_data")
-        town_shape_data = shape_map.get("town_shape_data")
-
-        if len(vals) == 0 and not config.get("is_has_data"):
-            msg = "无法获取站点数据, 请检查 data_service_url 和密钥配置"
-            raise Exception(msg)
-
+        df = await self._get_data(config)
+        df = self._filter_stations(config, df)
+        main_shape_data = self.shape_service.get_serialized(config["code"], "_county")
         if main_shape_data is None or main_shape_data.get("bounds") is None:
             msg = "无法获取边界数据"
             raise Exception(msg)
 
-        bounds = main_shape_data["bounds"]
-        stations, _ = self._data_service.filter_stations(stations, config)
-        logging.info(f"[PERF] filter_stations: stations={len(stations)}")
+        if config.get("is_city"):
+            self.shape_service.get_serialized(config["code"], "")
 
-        t7 = time.time()
-        logging.info(f"[PERF] total pre-render: {t7 - t_start:.3f}s, starting subprocess...")
+        if config.get("show_town"):
+            self.shape_service.get_serialized(config["code"], "_town")
 
-        config["trace_id"] = TraceContext.get()
-        config["_bounds"] = bounds
-        config["_stations"] = stations
-        config["_main_shape_data"] = main_shape_data
-        config["_pos"] = pos
-        config["_vals"] = vals
-        config["_city_shape_data"] = city_shape_data
-        config["_town_shape_data"] = town_shape_data
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(_get_process_pool(), self._subprocess_render, config)
+        _cache_set(config.get("id"), result)
+        import io
 
-        TraceLogger.log("subprocess_render")
+        return io.BytesIO(result)
+
+    async def _get_data(self, config) -> pd.DataFrame:
+        if config.get("is_has_data"):
+            return pd.DataFrame(config.get("data"))
         try:
-            result = await loop.run_in_executor(_get_process_pool(), _subprocess_render, config)
-        except BrokenProcessPool:
-            global _process_pool
-            _process_pool = None
-            result = await loop.run_in_executor(_get_process_pool(), _subprocess_render, config)
+            return await self.data_service.get_data(config["code"], config["datestr"], config["type"], config["axis"])
+        except Exception as e:
+            logging.warning("API data fetch failed [%s/%s/%s/%s], falling back to stations: %s", config["code"], config["datestr"], config["type"], config["axis"], e)
+            return await self.data_service.get_stations(config["code"], config["datestr"], config["type"])
 
-        del config["_bounds"]
-        del config["_stations"]
-        del config["_main_shape_data"]
-        del config["_pos"]
-        del config["_vals"]
-        del config["_city_shape_data"]
-        del config["_town_shape_data"]
+    @staticmethod
+    def _filter_stations(config, df) -> pd.DataFrame:
+        from config import SHOW_MINS
 
-        logging.info(f"[PERF] subprocess_render: {time.time() - t7:.3f}s")
-        logging.info(f"[PERF] TOTAL: {time.time() - t_start:.3f}s")
+        if len(df) == 0:
+            return df
 
-        _cache_set(cache_key, result)
+        filter_list = config.get("filter_list")
+        if filter_list and len(filter_list) > 0:
+            df = df[df["Station_Id_C"].isin(filter_list)]
 
-        if _should_save(config, len(stations)):
-            return f"{cache_key}.png"
-        return BytesIO(result)
+        top = config.get("top", 0)
+        if top != 0:
+            df["val"] = df["val"].astype(float)
+            df = df.sort_values(by="val", ascending=config.get("axis") in SHOW_MINS)
+            df = df.head(top)
+        return df
 
-    async def render_nc(self, lon, lat, vals, code, data_type, config, dirs=None) -> str:
-        """渲染 NC 格点数据为图片文件.
+    @staticmethod
+    def _subprocess_render(config):
+        from config import SHOW_MINS
+        from config.towns import towns
+        from rendering.worker import render_in_subprocess
 
-        Args:
-            lon: 经度网格
-            lat: 纬度网格
-            vals: 格点值数组
-            code: 区划代码
-            data_type: 数据类型
-            config: 渲染配置字典
-            dirs: 可选风向数据
+        df = pd.DataFrame(config.get("data"))
+        if len(df) == 0:
+            records, _, _ = [], [], []
+        else:
+            df_towns = pd.DataFrame(towns)
+            df = df[df["Admin_Code_CHN"] == config["code"]]
+            df["val"] = pd.to_numeric(df["val"], errors="coerce")
+            df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+            df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+            if "dir" in df.columns:
+                df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
+            df = df.dropna()
 
-        Returns:
-            生成的图片文件名, 失败返回空字符串
-        """
-        is_zhejiang = int(code[2:]) == 0
-        tail = "_city" if is_zhejiang else "_county"
+            if config.get("show_town") and not config.get("is_city"):
+                df["val"] = pd.to_numeric(df["val"], errors="coerce")
+                df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+                df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+                if "dir" in df.columns:
+                    df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
+                df = df.dropna(subset=["town"])
+                if len(df) == 0:
+                    return b""
+                agg_cols = ["town", "val", "lon", "lat"]
+                if "dir" in df.columns:
+                    agg_cols.append("dir")
+                df_agg = df[agg_cols].groupby(by=["town"]).min() if config.get("axis") in SHOW_MINS else df[agg_cols].groupby(by=["town"]).max()
+                df = pd.merge(df_towns, df_agg, on="town", how="right", suffixes=("_town", ""))
+                if config.get("show_real_station"):
+                    df["lon"] = df["lon"].fillna(df["lon_town"])
+                    df["lat"] = df["lat"].fillna(df["lat_town"])
+                else:
+                    df["lon"] = df["lon_town"].fillna(df["lon"])
+                    df["lat"] = df["lat_town"].fillna(df["lat"])
+                df = df.drop(columns=["lon_town", "lat_town"], errors="ignore")
 
-        loop = asyncio.get_running_loop()
-        records_data = await loop.run_in_executor(None, self._shape_service.get_serialized, code, tail)
+            df["lon"] = df["lon"].astype(float)
+            df["lat"] = df["lat"].astype(float)
+            records = df[["Station_Name", "val", "lon", "lat"]].to_dict("records")
 
-        if is_zhejiang:
-            config["city_shape_data"] = await loop.run_in_executor(None, self._shape_service.get_serialized, code, "")
+        pos = df[["lon", "lat"]].to_numpy() if len(df) > 0 else []
+        vals = df["val"].to_numpy().astype("float") if len(df) > 0 else []
 
-        if records_data is None or records_data.get("bounds") is None:
-            return ""
+        main_shape_data = None
+        city_shape_data = None
+        town_shape_data = None
 
-        return await loop.run_in_executor(
-            _get_process_pool(),
-            _subprocess_render_nc,
-            records_data["bounds"],
-            records_data,
-            lon,
-            lat,
-            vals,
-            code,
-            data_type,
-            config,
-            dirs,
+        from services.render_service import _sub_process_serialize_shape
+
+        if len(records) > 0:
+            main_shape_data = _sub_process_serialize_shape(config["code"], "_county")
+            if config.get("is_city"):
+                city_shape_data = _sub_process_serialize_shape(config["code"], "")
+            if config.get("show_town"):
+                town_shape_data = _sub_process_serialize_shape(config["code"], "_town")
+
+        image_stream = render_in_subprocess(
+            bounds=main_shape_data.get("bounds") if main_shape_data else [],
+            stations=records,
+            records_data=main_shape_data,
+            pos=pos,
+            vals=vals,
+            color_types=[config.get("type", ""), config.get("axis", "")],
+            is_rain=config.get("type", "") != "rain",
+            config=config,
+            city_shape_data=city_shape_data,
+            town_shape_data=town_shape_data,
         )
-
-
-def _subprocess_render(config: dict) -> bytes:
-    """子进程入口: 从 config 字典提取参数并调用 worker 渲染.
-
-    Args:
-        config: 渲染配置字典, 需包含 _bounds/_stations/_main_shape_data 等内部键
-
-    Returns:
-        图片字节数据
-    """
-    import logging as _logging
-    import time as _time
-
-    _logging.basicConfig(level=_logging.INFO)
-    t0 = _time.time()
-    from rendering.worker import render_in_subprocess
-
-    _logging.info(f"[PERF-SUB] import worker: {_time.time() - t0:.3f}s")
-    t1 = _time.time()
-    result = render_in_subprocess(
-        config["_bounds"],
-        config["_stations"],
-        config["_main_shape_data"],
-        config["_pos"],
-        config["_vals"],
-        [config.get("type", config.get("data_type", "")), config.get("axis", "")],
-        config.get("type", "") != "rain",
-        config,
-        config.get("_city_shape_data"),
-        config.get("_town_shape_data"),
-    )
-    _logging.info(f"[PERF-SUB] render_in_subprocess: {_time.time() - t1:.3f}s")
-    return result
-
-
-def _subprocess_render_nc(bounds, records_data, lon, lat, vals, code, data_type, config, dirs):
-    """子进程入口: 执行 NC 格点数据渲染.
-
-    Args:
-        bounds: 区划边界
-        records_data: 序列化的 shapefile 数据
-        lon: 经度网格
-        lat: 纬度网格
-        vals: 格点值数组
-        code: 区划代码
-        data_type: 数据类型
-        config: 渲染配置字典
-        dirs: 风向数据
-
-    Returns:
-        生成的图片文件名
-    """
-    from rendering.worker import render_nc_in_subprocess
-
-    return render_nc_in_subprocess(bounds, records_data, lon, lat, vals, code, data_type, config, dirs)
+        return image_stream

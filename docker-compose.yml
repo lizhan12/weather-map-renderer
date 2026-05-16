@@ -1,22 +1,37 @@
 services:
   py_draw:
-    build: .
+    image: registry.cn-beijing.aliyuncs.com/chen-xf/py_draw:latest
     container_name: py_draw
-    restart: always
+    restart: unless-stopped
     ports:
       - "8001:8001"
+    env_file: .env
+    environment:
+      - PYDRAW_DATA_SERVICE_URL=${PYDRAW_DATA_SERVICE_URL}
+      - PYDRAW_DATA_SERVICE_KEY=${PYDRAW_DATA_SERVICE_KEY}
+      - PYDRAW_DATA_SERVICE_SIGN_KEY=${PYDRAW_DATA_SERVICE_SIGN_KEY}
+      - PYDRAW_SHAPE_PATH=${PYDRAW_SHAPE_PATH:-/app/zjaws}
+      - PYDRAW_IMG_PATH=/app/imgs
+      - PYDRAW_LOG_PATH=/app/logs
+      - PYDRAW_BASE_PATH=${PYDRAW_BASE_PATH:-/app}
+      - PYDRAW_CORS_ORIGINS=${PYDRAW_CORS_ORIGINS}
     volumes:
-      - py_draw_data:/app/zjaws
-    env_file:
-      - .env
+      - py_draw_data:/app/imgs
+      - py_draw_logs:/app/logs
     mem_limit: 2g
-    mem_reservation: 256m
+    memswap_limit: 3g
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/docs')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 2G
 
 volumes:
   py_draw_data:
+  py_draw_logs:

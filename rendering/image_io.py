@@ -1,4 +1,3 @@
-import gc
 import os
 from io import BytesIO
 
@@ -63,10 +62,9 @@ def save_figure_to_file(fig, file_path: str) -> None:
 
 
 def close_figure(fig) -> None:
-    """释放 Figure 资源并触发垃圾回收.
+    """释放 Figure 资源.
 
     Args:
         fig: matplotlib Figure 对象
     """
     fig.clear()
-    gc.collect()

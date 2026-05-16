@@ -1,23 +1,34 @@
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
 import logging
 import os
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
-from config import AREAS, UNITS, get_area_layout, settings
+from config import UNITS, get_area_layout, settings
 from config.codes import codes
 from models.base import ItemImg
-from services.data_service import DataService
-from services.render_service import RenderService
-from services.shape_service import ShapeService
 from util.response_code import RET, error_map
 from util.trace import TraceContext
 from util.trace_logger import TraceLogger
+
+
+if TYPE_CHECKING:
+    from services.render_service import RenderService
+
+_render_service: object = None
+
+
+def set_service(service: RenderService) -> None:
+    global _render_service
+    _render_service = service
 
 
 router = APIRouter(tags=["图片"])
@@ -26,49 +37,29 @@ _all_def_cache: pd.DataFrame | None = None
 
 
 def _get_all_def() -> pd.DataFrame:
-    """惰性加载全部区划代码表 (仅在 gen_all 分支使用时初始化)."""
     global _all_def_cache
     if _all_def_cache is None:
         _all_def_cache = pd.DataFrame(codes)
     return _all_def_cache
 
 
-_shape_service = ShapeService(
-    shape_dir=settings.shape_path_resolved,
-    areas=AREAS,
-)
-_data_service = DataService(
-    prefix=settings.data_service_url,
-    key=settings.data_service_key,
-    sign_key=settings.data_service_sign_key,
-)
-_render_service = RenderService(
-    shape_service=_shape_service,
-    data_service=_data_service,
-)
-
-
 def _parse_bounds_lines(bounds_lines: str | None, is_city: bool) -> list[float]:
-    """解析边界线宽度配置, 未指定或格式不对时使用默认值."""
     default = "2.0,1.0,0.7" if is_city else "2.0,2.0,0.7"
     src = bounds_lines if bounds_lines and len(bounds_lines.split(",")) > 2 else default
     return [float(i) for i in src.split(",")]
 
 
 def _parse_bounds_colors(bounds_colors: str | None) -> list[str]:
-    """解析边界线颜色配置, 未指定或格式不对时使用默认值."""
     default = "#333,#333,#666"
     src = bounds_colors if bounds_colors and len(bounds_colors.split(",")) > 2 else default
     return src.split(",")
 
 
 def _resolve_label_location(location: str) -> str:
-    """根据色标方向推断标签位置: bottom/top → left, 否则 → top."""
     return "left" if location in ["bottom", "top"] else "top"
 
 
 def _resolve_unit_title(unit: str | None, data_type: str) -> str | None:
-    """解析单位标题: None→默认, '0'→隐藏, 其他→自定义."""
     if unit is None:
         return UNITS.get(data_type)
     if unit == "0":
@@ -77,7 +68,6 @@ def _resolve_unit_title(unit: str | None, data_type: str) -> str | None:
 
 
 def _fill_layout_defaults(config: dict, code: str, fix: bool = True) -> None:
-    """从区域布局配置填充缺失的布局参数 (top_location/face_location/width/height)."""
     infoconfig = get_area_layout(code)
     if infoconfig:
         if config.get("top_location") is None:
@@ -95,7 +85,6 @@ def _fill_layout_defaults(config: dict, code: str, fix: bool = True) -> None:
 
 
 def _generate_cache_id(config: dict, code: str) -> str:
-    """基于配置内容生成稳定的缓存 ID (MD5 前16位), 跨进程一致."""
     dict_str = json.dumps(config, default=str, sort_keys=True)
     digest = hashlib.md5(dict_str.encode()).hexdigest()[:16]
     return f"{digest}_{code}"
@@ -103,7 +92,6 @@ def _generate_cache_id(config: dict, code: str) -> str:
 
 @router.get("/pic/img/{id}", response_class=StreamingResponse)
 async def save_img(id: str):
-    """根据文件 ID 获取已保存的图片文件."""
     file_path = settings.img_data_path_resolved + f"/{id}"
     return FileResponse(file_path)
 

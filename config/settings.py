@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,7 +18,7 @@ UNITS = {
 class Settings(BaseSettings):
     """应用全局配置, 从环境变量 (PYDRAW_ 前缀) 或 .env 文件加载."""
 
-    base_path: str = "/home/tu"
+    base_path: str = str(Path.cwd())
 
     width: int = 700
     height: int = 700
