@@ -53,3 +53,15 @@ def is_exist_file(file_path):
         文件存在返回 True, 否则 False
     """
     return bool(os.path.isfile(file_path))
+
+
+def get_file_name(id_str: str) -> str:
+    """获取缓存文件完整路径.
+
+    Args:
+        id_str: 缓存标识符
+
+    Returns:
+        完整文件路径
+    """
+    return settings.img_data_path_resolved + "/" + id_str
