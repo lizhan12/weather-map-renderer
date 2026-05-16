@@ -12,7 +12,7 @@ from config import SHOW_MINS
 class DataService:
     """无状态数据获取服务, 复用 aiohttp ClientSession 连接池."""
 
-    def __init__(self, prefix: str, url_path: str, key: str, sign_key: str):
+    def __init__(self, prefix: str, url_path: str = "", key: str = "", sign_key: str = ""):
         self.prefix = prefix
         self.url_path = url_path
         self.key = key
