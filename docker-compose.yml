@@ -1,6 +1,7 @@
 services:
   py_draw:
-    image: registry.cn-beijing.aliyuncs.com/chen-xf/py_draw:latest
+    build: .
+    image: py_draw:latest
     container_name: py_draw
     restart: unless-stopped
     ports:
