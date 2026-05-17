@@ -92,7 +92,11 @@ def _generate_cache_id(config: dict, code: str) -> str:
 
 @router.get("/pic/img/{id}", response_class=StreamingResponse)
 async def save_img(id: str):
-    file_path = settings.img_data_path_resolved + f"/{id}"
+    file_path = settings.img_data_path_resolved + f"/{id}.png"
+    if not os.path.exists(file_path):
+        file_path = settings.img_data_path_resolved + f"/{id}"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Image {id} not found")
     return FileResponse(file_path)
 
 
@@ -153,8 +157,8 @@ async def get_img(
     bounds_colors: str | None = Query(None, description="边界线颜色"),
     publisher: str = Query("", description="发布单位"),
 ) -> StreamingResponse:
-    is_city = int(code[4:]) == 0
-    month = int(datestr[4:6]) if datestr else datetime.now().month
+    is_city = len(code) >= 5 and int(code[4:]) == 0
+    month = int(datestr[4:6]) if datestr and len(datestr) >= 6 else datetime.now().month
 
     request_config = {
         "hide_rain_zero": hide_rain_zero,
@@ -251,7 +255,7 @@ async def create_img(
     item: ItemImg = ItemImg(),
 ):
     request_config = item.model_dump()
-    is_city = int(code[4:]) == 0
+    is_city = len(code) >= 5 and int(code[4:]) == 0
 
     request_config["bound_lines"] = _parse_bounds_lines(request_config.get("bounds_lines"), is_city)
     request_config["bounds_colors"] = _parse_bounds_colors(request_config.get("bounds_colors"))
@@ -288,16 +292,23 @@ async def create_img(
     all_keys = []
 
     if gen_all:
+        all_tasks = []
+        all_keys = []
+        all_cache_ids = []
+
+        request_config["id"] = _generate_cache_id(request_config, code)
         all_tasks.append(_render_service.render(request_config))
         all_keys.append(code)
+        all_cache_ids.append(request_config["id"])
 
         df = pd.DataFrame(request_config["data"])
-        df = df.dropna()
+        if "lon" in df.columns and "lat" in df.columns and "val" in df.columns:
+            df = df.dropna(subset=["lon", "lat", "val"])
         parentconfig = request_config.copy()
         del parentconfig["data"]
         del parentconfig["code"]
 
-        if len(request_config["data"]) > 0:
+        if "Admin_Code_CHN" in df.columns:
             df["Admin_Code_CHN"] = pd.to_numeric(df["Admin_Code_CHN"], errors="coerce").astype("Int64")
             df["Admin_Code_CHN"] = df["Admin_Code_CHN"].astype("str")
             df["code"] = df["Admin_Code_CHN"].str.slice(0, 6)
@@ -326,6 +337,7 @@ async def create_img(
                 sub_config["id"] = _generate_cache_id(sub_config, name)
                 all_tasks.append(_render_service.render(sub_config))
                 all_keys.append(name)
+                all_cache_ids.append(sub_config["id"])
 
         request_config["gen"] = True
         codedf = _get_all_def()[_get_all_def()["code"].str.startswith(code[0:6])].copy()
@@ -350,15 +362,16 @@ async def create_img(
             sub_config["id"] = _generate_cache_id(sub_config, name)
             all_tasks.append(_render_service.render(sub_config))
             all_keys.append(name)
+            all_cache_ids.append(sub_config["id"])
 
         all_results = await asyncio.gather(*all_tasks, return_exceptions=True)
         ids = []
-        for key, result in zip(all_keys, all_results, strict=False):
+        for key, cache_id, result in zip(all_keys, all_cache_ids, all_results, strict=False):
             if isinstance(result, Exception):
-                logging.error(f"Render error for {key}: {result}", exc_info=True)
+                logging.error("Render error for %s: %s", key, result, exc_info=True)
                 ids.append({key: None, "error": f"{type(result).__name__}: {result}"})
             else:
-                ids.append({key: result})
+                ids.append({key: cache_id})
     else:
         try:
             id = await _render_service.render(request_config)

@@ -62,6 +62,6 @@ def get_file_name(id_str: str) -> str:
         id_str: 缓存标识符
 
     Returns:
-        完整文件路径
+        完整文件路径 (带 .png 后缀)
     """
-    return settings.img_data_path_resolved + "/" + id_str
+    return settings.img_data_path_resolved + "/" + id_str + ".png"

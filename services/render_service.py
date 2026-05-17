@@ -123,10 +123,7 @@ class RenderService:
 
         df = await self._get_data(config)
         df = self._filter_stations(config, df)
-        main_shape_data = self.shape_service.get_serialized(config["code"], "_county")
-        if main_shape_data is None or main_shape_data.get("bounds") is None:
-            msg = "无法获取边界数据"
-            raise Exception(msg)
+        self.shape_service.get_serialized(config["code"], "_county")
 
         if config.get("is_city"):
             self.shape_service.get_serialized(config["code"], "")
@@ -136,6 +133,9 @@ class RenderService:
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(_get_process_pool(), self._subprocess_render, config)
+        if not result or (isinstance(result, bytes) and len(result) == 0):
+            logging.warning("Render returned empty result for id=%s code=%s", config.get("id"), config.get("code"))
+            raise RuntimeError(f"Render produced empty result for code={config.get('code')}")
         _cache_set(config.get("id"), result)
         import io
 
@@ -147,8 +147,15 @@ class RenderService:
         try:
             return await self.data_service.get_data(config["code"], config["datestr"], config["type"], config["axis"])
         except Exception as e:
-            logging.warning("API data fetch failed [%s/%s/%s/%s], falling back to stations: %s", config["code"], config["datestr"], config["type"], config["axis"], e)
-            return await self.data_service.get_stations(config["code"], config["datestr"], config["type"])
+            logging.warning(
+                "API data fetch failed [%s/%s/%s/%s], falling back to stations: %s",
+                config["code"],
+                config["datestr"],
+                config["type"],
+                config["axis"],
+                e,
+            )
+            return await self.data_service.get_stations(config["code"], config["datestr"], config["type"], config["axis"])
 
     @staticmethod
     def _filter_stations(config, df) -> pd.DataFrame:
@@ -159,7 +166,9 @@ class RenderService:
 
         filter_list = config.get("filter_list")
         if filter_list and len(filter_list) > 0:
-            df = df[df["Station_Id_C"].isin(filter_list)]
+            filter_col = "Station_Id_C" if "Station_Id_C" in df.columns else "station_id"
+            if filter_col in df.columns:
+                df = df[df[filter_col].isin(filter_list)]
 
         top = config.get("top", 0)
         if top != 0:
@@ -177,44 +186,100 @@ class RenderService:
         df = pd.DataFrame(config.get("data"))
         if len(df) == 0:
             records, _, _ = [], [], []
+            pos = []
+            vals = []
         else:
-            df_towns = pd.DataFrame(towns)
-            df = df[df["Admin_Code_CHN"] == config["code"]]
-            df["val"] = pd.to_numeric(df["val"], errors="coerce")
-            df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-            df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-            if "dir" in df.columns:
-                df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
-            df = df.dropna()
+            rename_map = {}
+            if "val" not in df.columns:
+                for key in ("V", "v", "VAL", "Val"):
+                    if key in df.columns:
+                        rename_map[key] = "val"
+                        break
+            if "lon" not in df.columns:
+                for key in ("LON", "Lon"):
+                    if key in df.columns:
+                        rename_map[key] = "lon"
+                        break
+            if "lat" not in df.columns:
+                for key in ("LAT", "Lat"):
+                    if key in df.columns:
+                        rename_map[key] = "lat"
+                        break
+            if "town" not in df.columns:
+                for key in ("Town",):
+                    if key in df.columns:
+                        rename_map[key] = "town"
+                        break
+            if "name" not in df.columns:
+                for key in ("Station_Name",):
+                    if key in df.columns:
+                        rename_map[key] = "name"
+                        break
+            if "dir" not in df.columns:
+                for key in ("D", "Dir"):
+                    if key in df.columns:
+                        rename_map[key] = "dir"
+                        break
+            if rename_map:
+                df.rename(columns=rename_map, inplace=True)
 
-            if config.get("show_town") and not config.get("is_city"):
+            if "Admin_Code_CHN" in df.columns and not config.get("is_city"):
+                df = df[df["Admin_Code_CHN"] == config["code"]]
+
+            if len(df) == 0:
+                records, _, _ = [], [], []
+                pos = []
+                vals = []
+            else:
                 df["val"] = pd.to_numeric(df["val"], errors="coerce")
                 df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
                 df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
                 if "dir" in df.columns:
                     df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
-                df = df.dropna(subset=["town"])
-                if len(df) == 0:
-                    return b""
-                agg_cols = ["town", "val", "lon", "lat"]
-                if "dir" in df.columns:
-                    agg_cols.append("dir")
-                df_agg = df[agg_cols].groupby(by=["town"]).min() if config.get("axis") in SHOW_MINS else df[agg_cols].groupby(by=["town"]).max()
-                df = pd.merge(df_towns, df_agg, on="town", how="right", suffixes=("_town", ""))
-                if config.get("show_real_station"):
-                    df["lon"] = df["lon"].fillna(df["lon_town"])
-                    df["lat"] = df["lat"].fillna(df["lat_town"])
+                df = df.dropna(subset=["val", "lon", "lat"])
+
+                if config.get("show_town") and not config.get("is_city"):
+                    if "town" in df.columns:
+                        df = df[df["town"].ne("-")]
+                        df = df.dropna(subset=["town", "val", "lon", "lat"])
+                    if len(df) == 0:
+                        records, _, _ = [], [], []
+                        pos = []
+                        vals = []
+                    else:
+                        df_towns = pd.DataFrame(towns)
+                        agg_cols = ["town", "val", "lon", "lat"]
+                        if "dir" in df.columns and "dir" not in df_towns.columns:
+                            agg_cols.append("dir")
+                        df_agg = (
+                            df[agg_cols].groupby(by=["town"]).min()
+                            if config.get("axis") in SHOW_MINS
+                            else df[agg_cols].groupby(by=["town"]).max()
+                        )
+                        df = pd.merge(df_towns, df_agg, on="town", how="right", suffixes=("_town", ""))
+                        if config.get("show_real_station"):
+                            df["lon"] = df["lon"].fillna(df["lon_town"])
+                            df["lat"] = df["lat"].fillna(df["lat_town"])
+                        else:
+                            df["lon"] = df["lon_town"].fillna(df["lon"])
+                            df["lat"] = df["lat_town"].fillna(df["lat"])
+                        df = df.drop(columns=["lon_town", "lat_town"], errors="ignore")
+                        df["lon"] = df["lon"].astype(float)
+                        df["lat"] = df["lat"].astype(float)
+                        if "name" in df.columns:
+                            records = df[["name", "val", "lon", "lat"]].to_dict("records")
+                        else:
+                            records = [{"name": row.get("town", ""), "val": row["val"], "lon": row["lon"], "lat": row["lat"]} for _, row in df.iterrows()]
+                        pos = df[["lon", "lat"]].to_numpy()
+                        vals = df["val"].to_numpy().astype("float")
                 else:
-                    df["lon"] = df["lon_town"].fillna(df["lon"])
-                    df["lat"] = df["lat_town"].fillna(df["lat"])
-                df = df.drop(columns=["lon_town", "lat_town"], errors="ignore")
-
-            df["lon"] = df["lon"].astype(float)
-            df["lat"] = df["lat"].astype(float)
-            records = df[["Station_Name", "val", "lon", "lat"]].to_dict("records")
-
-        pos = df[["lon", "lat"]].to_numpy() if len(df) > 0 else []
-        vals = df["val"].to_numpy().astype("float") if len(df) > 0 else []
+                    df["lon"] = df["lon"].astype(float)
+                    df["lat"] = df["lat"].astype(float)
+                    if "name" not in df.columns:
+                        df["name"] = ""
+                    records = df[["name", "val", "lon", "lat"]].to_dict("records")
+                    pos = df[["lon", "lat"]].to_numpy()
+                    vals = df["val"].to_numpy().astype("float")
 
         main_shape_data = None
         city_shape_data = None
@@ -222,12 +287,18 @@ class RenderService:
 
         from services.render_service import _sub_process_serialize_shape
 
-        if len(records) > 0:
-            main_shape_data = _sub_process_serialize_shape(config["code"], "_county")
-            if config.get("is_city"):
-                city_shape_data = _sub_process_serialize_shape(config["code"], "")
-            if config.get("show_town"):
-                town_shape_data = _sub_process_serialize_shape(config["code"], "_town")
+        main_shape_data = _sub_process_serialize_shape(config["code"], "_county")
+        if main_shape_data is None:
+            logging.warning("Shape data missing for code=%s, skipping render", config["code"])
+            return b""
+        if config.get("is_city"):
+            city_shape_data = _sub_process_serialize_shape(config["code"], "")
+        if config.get("show_town"):
+            town_shape_data = _sub_process_serialize_shape(config["code"], "_town")
+
+        if not main_shape_data.get("bounds"):
+            logging.warning("Bounds data missing for code=%s, skipping render", config["code"])
+            return b""
 
         image_stream = render_in_subprocess(
             bounds=main_shape_data.get("bounds") if main_shape_data else [],
@@ -241,4 +312,10 @@ class RenderService:
             city_shape_data=city_shape_data,
             town_shape_data=town_shape_data,
         )
+        if isinstance(image_stream, str):
+            file_path = settings.img_data_path_resolved + "/" + image_stream
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    return f.read()
+            return b""
         return image_stream

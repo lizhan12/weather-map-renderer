@@ -13,13 +13,16 @@ class TraceLogger:
 
     @classmethod
     def init(cls, path: str):
+        cls._path = path
         if cls._queue is None:
             cls._queue = asyncio.Queue()
         if cls._logs is None:
             cls._logs = deque(maxlen=cls._max_logs)
+
+    @classmethod
+    def start(cls):
         if cls._task is None:
             cls._task = asyncio.create_task(cls._consume())
-        cls._path = path
 
     @classmethod
     async def _consume(cls):

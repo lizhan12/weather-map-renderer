@@ -200,7 +200,7 @@ def render_in_subprocess(
 
     t8 = _time.time()
     image_stream = save_figure_to_stream(fig)
-    TraceLogger.log("image_encode")
+    TraceLogger.log("image_encode", "start")
     close_figure(fig)
     logging.info(f"[PERF-WORKER] save_to_stream: {_time.time() - t8:.3f}s")
     logging.info(f"[PERF-WORKER] TOTAL: {_time.time() - t0:.3f}s")
@@ -329,7 +329,7 @@ def render_nc_in_subprocess(bounds, records_data, lon, lat, vals, code, data_typ
     fig.tight_layout()
     _reset_margin(ax, cbar, config)
 
-    file_id = uuid.uuid4()
+    file_id = config.get("id") or str(uuid.uuid4())
     save_figure_to_file(fig, settings.img_data_path_resolved + f"/{file_id}.png")
     close_figure(fig)
     return f"{file_id}.png"
@@ -581,7 +581,7 @@ def _top_face(stations, is_rain, config):
     df["val"] = df["val"].astype(float)
     is_ascending = config and config.get("axis") in SHOW_MINS
     top_df = df
-    if config and config.get("is_city") is False:
+    if config and config.get("is_city") is False and "code" in df.columns:
         top_df = df[df["code"] == config["code"]]
     top_df = top_df.sort_values(by="val", ascending=is_ascending)
     head = top_df.head(config.get("top", 5) if config else 5)

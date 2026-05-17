@@ -75,6 +75,7 @@ def _validate_resources():
     if not os.path.isdir(settings.font_path_resolved if hasattr(settings, "font_path_resolved") else ""):
         pass
     from rendering.paths import SIMHEI_FONT
+
     if not os.path.isfile(SIMHEI_FONT):
         missing.append(f"font={SIMHEI_FONT}")
     if missing:
@@ -83,6 +84,7 @@ def _validate_resources():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    TraceLogger.start()
     img_v2.set_service(_render_service)
     init()
     _validate_resources()
