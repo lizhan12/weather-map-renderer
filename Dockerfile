@@ -31,6 +31,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY . .
 
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

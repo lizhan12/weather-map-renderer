@@ -17,22 +17,14 @@ services:
       - PYDRAW_BASE_PATH=${PYDRAW_BASE_PATH:-/app}
       - PYDRAW_CORS_ORIGINS=${PYDRAW_CORS_ORIGINS}
     volumes:
-      - py_draw_data:/app/imgs
-      - py_draw_logs:/app/logs
-    mem_limit: 2g
-    memswap_limit: 3g
+      - ./imgs:/app/imgs
+      - ./logs:/app/logs
+    mem_limit: 4g
+    memswap_limit: 8g
+    cpus: 4
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: "4"
-          memory: 2G
-
-volumes:
-  py_draw_data:
-  py_draw_logs:

@@ -7,7 +7,7 @@ import aiohttp
 import pandas as pd
 
 from config import SHOW_MINS
-from util.sm4 import sign_encode
+from util.sm4 import sign_encode, sm4_decode
 
 
 class DataService:
@@ -15,28 +15,35 @@ class DataService:
 
     _DATE_PLACEHOLDER = "GETDATEB0YCODE"
 
-    def __init__(self, prefix: str, key: str = "", sign_key: str = ""):
+    def __init__(self, prefix: str, key: str = "", sign_key: str = "", referer: str = "", user_agent: str = "", timeout: int = 30):
         self.prefix = prefix
         self.key = key
         self.sign_key = sign_key
+        self._referer = referer
+        self._user_agent = user_agent
+        self._timeout = timeout
         self._session: aiohttp.ClientSession | None = None
 
     def _resolve_url(self) -> str:
         return self.prefix
 
-    def _add_sign_params(self, params: dict, code: str, datestr: str) -> dict:
-        """添加签名和时间戳参数."""
+    def _add_sign_params(self, params: dict) -> dict:
+        """添加签名和时间戳参数, 签名算法: md5(key + secret + timestamp)."""
         if self.key:
-            mid_str = f"{code}{datestr}"
-            sign, timestamp = sign_encode(self.sign_key, mid_str)
+            sign, timestamp = sign_encode(self.key, self.sign_key)
             params["sign"] = sign
             params["timestamp"] = timestamp
         return params
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
-            self._session = aiohttp.ClientSession(timeout=timeout)
+            headers: dict[str, str] = {}
+            if self._user_agent:
+                headers["User-Agent"] = self._user_agent
+            if self._referer:
+                headers["Referer"] = self._referer
+            timeout = aiohttp.ClientTimeout(total=self._timeout, connect=10, sock_read=max(self._timeout - 10, 10))
+            self._session = aiohttp.ClientSession(timeout=timeout, headers=headers or None)
         return self._session
 
     async def close(self):
@@ -44,64 +51,81 @@ class DataService:
             await self._session.close()
             self._session = None
 
+    def _extract_data(self, json: dict) -> pd.DataFrame:
+        ds = json.get("DS")
+        if isinstance(ds, str) and ds:
+            decrypted = sm4_decode(self.key, ds)
+            if isinstance(decrypted, list):
+                return pd.DataFrame(decrypted)
+            if isinstance(decrypted, dict):
+                inner = decrypted.get("data")
+                if isinstance(inner, list):
+                    return pd.DataFrame(inner)
+        data = json.get("data")
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            return pd.DataFrame(data["data"])
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        return pd.DataFrame([])
+
     async def get_data(self, code: str, datestr: str, data_type: str, axis: str) -> pd.DataFrame:
         params = {"sort": "desc", "alias": axis, "code": code, "endTime": datestr}
-        params = self._add_sign_params(params, code, datestr)
+        params = self._add_sign_params(params)
         session = await self._get_session()
         url = self._resolve_url()
         async with session.get(url, params=params) as response:
             response.raise_for_status()
             json = await response.json()
         if json.get("returnCode") == "0":
-            return pd.DataFrame(json["data"]["data"])
+            return self._extract_data(json)
         return pd.DataFrame([])
 
     async def get_stations(self, code: str, datestr: str, data_type: str, axis: str) -> pd.DataFrame:
         params = {"sort": "desc", "alias": axis, "code": code, "endTime": datestr}
-        params = self._add_sign_params(params, code, datestr)
+        params = self._add_sign_params(params)
         session = await self._get_session()
         url = self._resolve_url()
         async with session.get(url, params=params) as response:
             response.raise_for_status()
             json = await response.json()
         if json.get("returnCode") == "0":
-            return pd.DataFrame(json["data"]["data"])
+            return self._extract_data(json)
         return pd.DataFrame([])
 
     async def get_els_data(self, code: str, datestr: str, axis: str) -> pd.DataFrame:
         params = {"sort": "desc", "alias": axis, "code": code, "endTime": datestr}
-        params = self._add_sign_params(params, code, datestr)
+        params = self._add_sign_params(params)
         session = await self._get_session()
         url = self._resolve_url()
         async with session.get(url, params=params) as response:
             response.raise_for_status()
             json = await response.json()
         if json.get("returnCode") == "0":
-            return pd.DataFrame(json["data"]["data"])
+            return self._extract_data(json)
         return pd.DataFrame([])
 
     async def get_els_area_data(self, code: str, datestr: str, data_type: str, axis: str) -> pd.DataFrame:
         params = {"sort": "desc", "alias": axis, "code": code, "endTime": datestr}
-        params = self._add_sign_params(params, code, datestr)
+        params = self._add_sign_params(params)
         session = await self._get_session()
         url = self._resolve_url()
         async with session.get(url, params=params) as response:
             response.raise_for_status()
             json = await response.json()
         if json.get("returnCode") == "0":
-            return pd.DataFrame(json["data"]["data"])
+            return self._extract_data(json)
         return pd.DataFrame([])
 
     async def get_rain_data(self, code: str, datestr: str) -> pd.DataFrame:
         params = {"sort": "desc", "alias": "RAIN_H_POINT", "code": code, "endTime": datestr}
-        params = self._add_sign_params(params, code, datestr)
+        params = self._add_sign_params(params)
         session = await self._get_session()
         url = self._resolve_url()
         async with session.get(url, params=params) as response:
             response.raise_for_status()
             json = await response.json()
         if json.get("returnCode") == "0":
-            return pd.DataFrame(json["data"]["data"])
+            return self._extract_data(json)
         return pd.DataFrame([])
 
     async def handle_data(self, config: dict) -> list[dict[str, Any]]:
@@ -128,7 +152,17 @@ class DataService:
             df = await self.get_els_data(config["code"], config["datestr"], config["axis"])
 
         if len(df) > 0 and not config.get("is_has_data"):
-            df.rename(columns={"VAL": "val", "V": "val", "LON": "lon", "LAT": "lat"}, inplace=True)
+            df.rename(
+                columns={
+                    "V": "val", "v": "val", "VAL": "val", "Val": "val",
+                    "LON": "lon", "Lon": "lon",
+                    "LAT": "lat", "Lat": "lat",
+                    "Town": "town",
+                    "Station_Name": "name",
+                    "D": "dir", "Dir": "dir",
+                },
+                inplace=True,
+            )
 
         if (
             len(df) > 0
@@ -220,7 +254,11 @@ def _filter_stations(config: dict, stations: list[dict[str, Any]]) -> tuple[list
         except (ValueError, KeyError):
             pass
 
-    if config.get("show_town") and not config.get("is_city"):
+    if config.get("is_city"):
+        stations = [s for s in stations if str(s.get("Station_Id_C", "")).startswith("5")]
+        return stations, False
+
+    if config.get("show_town"):
         df = pd.DataFrame(stations)
         df["val"] = pd.to_numeric(df["val"], errors="coerce")
         df["lon"] = pd.to_numeric(df["lon"], errors="coerce")

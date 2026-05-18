@@ -187,7 +187,7 @@ def render_in_subprocess(
         head, face = _top_face(stations, is_rain=is_rain, config=config)
         if config.get("top", 0):
             _draw_rank_table(ax, head, config)
-        if config.get("show_face") and not is_rain:
+        if config.get("show_face") and is_rain:
             _draw_face_rainfall_table(ax, face, config)
 
     if config.get("show_wind"):

@@ -67,4 +67,8 @@ def close_figure(fig) -> None:
     Args:
         fig: matplotlib Figure 对象
     """
+    import gc
+
     fig.clear()
+    del fig
+    gc.collect()

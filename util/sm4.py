@@ -29,12 +29,14 @@ def sm4_decode(key: str, data: str) -> dict:
     return json.loads(decrypted.decode())
 
 
-def sign_encode(key: str, mid_str: str) -> tuple[str, str]:
+def sign_encode(key: str, secret: str) -> tuple[str, str]:
     """生成 MD5 签名和时间戳, 用于接口鉴权.
 
+    签名算法: md5(key + secret + timestamp)
+
     Args:
-        key: 签名密钥
-        mid_str: 签名中间字符串 (通常为业务参数)
+        key: 应用密钥 (appKey)
+        secret: 签名密钥 (appSecret)
 
     Returns:
         (md5_hex, timestamp_ms) 元组, key 为空时返回 ("", "")
@@ -43,5 +45,5 @@ def sign_encode(key: str, mid_str: str) -> tuple[str, str]:
         return "", ""
     md5_hash = hashlib.md5()
     timestr = str(int(time.time() * 1000))
-    md5_hash.update((key + mid_str + timestr).encode("utf-8"))
+    md5_hash.update((key + secret + timestr).encode("utf-8"))
     return md5_hash.hexdigest(), timestr

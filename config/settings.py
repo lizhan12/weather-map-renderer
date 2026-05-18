@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     data_service_url: str = ""
     data_service_key: str = ""
     data_service_sign_key: str = ""
+    data_service_referer: str = ""
+    data_service_user_agent: str = ""
+    data_service_timeout: int = 30
 
     model_config = SettingsConfigDict(env_prefix="PYDRAW_", env_file=".env", extra="ignore")
 

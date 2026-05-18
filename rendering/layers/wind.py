@@ -1,6 +1,26 @@
 from __future__ import annotations
 
+import os
+
+import matplotlib.font_manager as fm
+
 from config import WIND_SIGN, WS
+
+
+_wind_font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "font", "wind Bold.ttf")
+_wind_font_cache: fm.FontProperties | None = None
+
+
+def _get_wind_font_properties() -> fm.FontProperties:
+    """加载风向字体 (wind Bold.ttf) 的 FontProperties (带缓存).
+
+    Returns:
+        matplotlib FontProperties 对象, size=50
+    """
+    global _wind_font_cache
+    if _wind_font_cache is None:
+        _wind_font_cache = fm.FontProperties(fname=_wind_font_path, size=50)
+    return _wind_font_cache
 
 
 def draw_wind_barbs(ax, stations: list, config: dict, state: dict) -> None:
@@ -124,17 +144,3 @@ def _draw_wind_marker(ax, lon, lat, val, direction, fontsize, fontcolor, config)
         rotation=360.0 - float(direction),
         fontsize=fontsize,
     )
-
-
-def _get_wind_font_properties():
-    """加载风向字体 (wind Bold.ttf) 的 FontProperties.
-
-    Returns:
-        matplotlib FontProperties 对象, size=50
-    """
-    import os
-
-    import matplotlib.font_manager as fm
-
-    font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "font", "wind Bold.ttf")
-    return fm.FontProperties(fname=font_path, size=50)

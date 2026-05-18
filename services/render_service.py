@@ -43,17 +43,26 @@ def _init_worker():
     import matplotlib
 
     matplotlib.use("agg")
-    import gc
+    import matplotlib.font_manager as fm
 
-    gc.disable()
+    from rendering.paths import SIMHEI_FONT
+
+    fm.fontManager.addfont(SIMHEI_FONT)
+    matplotlib.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
+
+_sub_shape_service: ShapeService | None = None
 
 
 def _sub_process_serialize_shape(code: str, tail: str):
-    """子进程版本 shape 序列化, 独立创建 ShapeService 避免跨进程共享."""
+    """子进程版本 shape 序列化, 使用进程级缓存的 ShapeService."""
+    global _sub_shape_service
     from services.shape_service import ShapeService
 
-    ss = ShapeService(shape_dir=settings.shape_path_resolved, areas={})
-    return ss.get_serialized(code, tail)
+    if _sub_shape_service is None:
+        _sub_shape_service = ShapeService(shape_dir=settings.shape_path_resolved, areas={})
+    return _sub_shape_service.get_serialized(code, tail)
 
 
 def _cache_get(key):
@@ -95,6 +104,12 @@ def _clean_old_files(max_files: int):
         pass
 
 
+def _should_cache(config: dict, df: pd.DataFrame) -> bool:
+    code = config.get("code", "")
+    is_city = config.get("is_city", False) or (len(code) >= 5 and code[4:6] == "00")
+    return not (is_city and len(df) < 20)
+
+
 class RenderService:
     """无状态渲染服务, 组合 DataService/ShapeService 并提供统一的 render 接口."""
 
@@ -123,6 +138,8 @@ class RenderService:
 
         df = await self._get_data(config)
         df = self._filter_stations(config, df)
+        if not config.get("is_has_data") and len(df) > 0:
+            config["data"] = df.to_dict(orient="records")
         self.shape_service.get_serialized(config["code"], "_county")
 
         if config.get("is_city"):
@@ -135,8 +152,10 @@ class RenderService:
         result = await loop.run_in_executor(_get_process_pool(), self._subprocess_render, config)
         if not result or (isinstance(result, bytes) and len(result) == 0):
             logging.warning("Render returned empty result for id=%s code=%s", config.get("id"), config.get("code"))
-            raise RuntimeError(f"Render produced empty result for code={config.get('code')}")
-        _cache_set(config.get("id"), result)
+            msg = f"Render produced empty result for code={config.get('code')}"
+            raise RuntimeError(msg)
+        if _should_cache(config, df):
+            _cache_set(config.get("id"), result)
         import io
 
         return io.BytesIO(result)
@@ -155,7 +174,9 @@ class RenderService:
                 config["axis"],
                 e,
             )
-            return await self.data_service.get_stations(config["code"], config["datestr"], config["type"], config["axis"])
+            return await self.data_service.get_stations(
+                config["code"], config["datestr"], config["type"], config["axis"]
+            )
 
     @staticmethod
     def _filter_stations(config, df) -> pd.DataFrame:
@@ -238,7 +259,20 @@ class RenderService:
                     df["dir"] = pd.to_numeric(df["dir"], errors="coerce")
                 df = df.dropna(subset=["val", "lon", "lat"])
 
-                if config.get("show_town") and not config.get("is_city"):
+                if config.get("is_city"):
+                    df_all = df.copy()
+                    if "Station_Id_C" in df.columns:
+                        df = df[df["Station_Id_C"].astype(str).str.startswith("5")]
+                    df["lon"] = df["lon"].astype(float)
+                    df["lat"] = df["lat"].astype(float)
+                    if "name" not in df.columns:
+                        df["name"] = ""
+                    records = df[["name", "val", "lon", "lat"]].to_dict("records")
+                    df_all["lon"] = df_all["lon"].astype(float)
+                    df_all["lat"] = df_all["lat"].astype(float)
+                    pos = df_all[["lon", "lat"]].to_numpy()
+                    vals = df_all["val"].to_numpy().astype("float")
+                elif config.get("show_town"):
                     if "town" in df.columns:
                         df = df[df["town"].ne("-")]
                         df = df.dropna(subset=["town", "val", "lon", "lat"])
@@ -269,7 +303,10 @@ class RenderService:
                         if "name" in df.columns:
                             records = df[["name", "val", "lon", "lat"]].to_dict("records")
                         else:
-                            records = [{"name": row.get("town", ""), "val": row["val"], "lon": row["lon"], "lat": row["lat"]} for _, row in df.iterrows()]
+                            records = [
+                                {"name": row.get("town", ""), "val": row["val"], "lon": row["lon"], "lat": row["lat"]}
+                                for _, row in df.iterrows()
+                            ]
                         pos = df[["lon", "lat"]].to_numpy()
                         vals = df["val"].to_numpy().astype("float")
                 else:
@@ -307,7 +344,7 @@ class RenderService:
             pos=pos,
             vals=vals,
             color_types=[config.get("type", ""), config.get("axis", "")],
-            is_rain=config.get("type", "") != "rain",
+            is_rain=config.get("type", "") == "rain",
             config=config,
             city_shape_data=city_shape_data,
             town_shape_data=town_shape_data,

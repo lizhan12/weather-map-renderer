@@ -25,6 +25,9 @@ _data_service = DataService(
     prefix=settings.data_service_url,
     key=settings.data_service_key,
     sign_key=settings.data_service_sign_key,
+    referer=settings.data_service_referer,
+    user_agent=settings.data_service_user_agent,
+    timeout=settings.data_service_timeout,
 )
 _render_service = RenderService(
     shape_service=_shape_service,
