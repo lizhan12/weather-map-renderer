@@ -5,10 +5,11 @@ import threading
 
 import cartopy.io.shapereader as shpreader
 
+from util import is_city_code
 from util.trace_logger import TraceLogger
 
 
-_SIMPLIFY_TOLERANCE = 0.01
+_SIMPLIFY_TOLERANCE = 0.002
 
 
 def set_simplify_tolerance(value: float) -> None:
@@ -48,7 +49,7 @@ class ShapeService:
         Returns:
             (records, bounds, geometries) 元组, 失败返回 (None, None, None)
         """
-        is_city = int(code[4:]) == 0
+        is_city = is_city_code(code)
         city_code = code[:4] + "00"
         cache_key = city_code + "000" + tail
 

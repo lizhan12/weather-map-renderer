@@ -15,7 +15,9 @@ class DataService:
 
     _DATE_PLACEHOLDER = "GETDATEB0YCODE"
 
-    def __init__(self, prefix: str, key: str = "", sign_key: str = "", referer: str = "", user_agent: str = "", timeout: int = 30):
+    def __init__(
+        self, prefix: str, key: str = "", sign_key: str = "", referer: str = "", user_agent: str = "", timeout: int = 30
+    ):
         self.prefix = prefix
         self.key = key
         self.sign_key = sign_key
@@ -152,17 +154,9 @@ class DataService:
             df = await self.get_els_data(config["code"], config["datestr"], config["axis"])
 
         if len(df) > 0 and not config.get("is_has_data"):
-            df.rename(
-                columns={
-                    "V": "val", "v": "val", "VAL": "val", "Val": "val",
-                    "LON": "lon", "Lon": "lon",
-                    "LAT": "lat", "Lat": "lat",
-                    "Town": "town",
-                    "Station_Name": "name",
-                    "D": "dir", "Dir": "dir",
-                },
-                inplace=True,
-            )
+            from services.render_service import _normalize_df_columns
+
+            _normalize_df_columns(df)
 
         if (
             len(df) > 0

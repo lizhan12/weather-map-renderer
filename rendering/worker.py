@@ -9,11 +9,12 @@ import matplotlib
 matplotlib.use("agg")
 import cartopy.crs as ccrs
 import numpy as np
+import pandas as pd
 from PIL import Image
 from scipy import ndimage
 from shapely.geometry import shape as shp_shape
 
-from config import settings
+from config import SHOW_MINS, settings
 from config.color_maps import get_color_map, rgb_to_hex
 from rendering.image_io import close_figure, create_figure, save_figure_to_file, save_figure_to_stream
 from rendering.layers.base_map import clip_path, draw_border, draw_mesh_lines, get_map_extent, set_margin
@@ -573,10 +574,6 @@ def _set_logo(fig, config):
 
 def _top_face(stations, is_rain, config):
     """计算站点排名 (子进程版本, 简化版不计算面雨量)."""
-    import pandas as pd
-
-    from config import SHOW_MINS
-
     df = pd.DataFrame(stations)
     df["val"] = df["val"].astype(float)
     is_ascending = config and config.get("axis") in SHOW_MINS

@@ -5,12 +5,14 @@ import logging
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
+from io import BytesIO
 
 import pandas as pd
 
 from config import settings
 from services.data_service import DataService
 from services.shape_service import ShapeService
+from util import is_city_code
 from util.file_dir_io import get_file_name
 
 
@@ -51,12 +53,20 @@ def _init_worker():
     matplotlib.rcParams["font.sans-serif"] = ["SimHei", "DejaVu Sans"]
     matplotlib.rcParams["axes.unicode_minus"] = False
 
+    from config import SHOW_MINS  # noqa: F401 - 预加载到子进程 sys.modules
+    from config.towns import towns  # noqa: F401
+    from rendering.worker import render_in_subprocess  # noqa: F401
+    from services.shape_service import ShapeService  # noqa: F401
+
 
 _sub_shape_service: ShapeService | None = None
 
 
-def _sub_process_serialize_shape(code: str, tail: str):
-    """子进程版本 shape 序列化, 使用进程级缓存的 ShapeService."""
+def _sub_process_serialize_shape(code: str, tail: str) -> dict | None:
+    """子进程版本 shape 序列化, 使用进程级缓存的 ShapeService.
+
+    函数内部导入 ShapeService 避免子进程初始化时加载不必要的模块.
+    """
     global _sub_shape_service
     from services.shape_service import ShapeService
 
@@ -65,7 +75,7 @@ def _sub_process_serialize_shape(code: str, tail: str):
     return _sub_shape_service.get_serialized(code, tail)
 
 
-def _cache_get(key):
+def _cache_get(key: str) -> bytes | None:
     try:
         file_name = get_file_name(key)
         if os.path.exists(file_name) and time.time() - os.stat(file_name).st_mtime < settings.cache_ttl:
@@ -76,7 +86,7 @@ def _cache_get(key):
     return None
 
 
-def _cache_set(key, content):
+def _cache_set(key: str, content: bytes) -> None:
     try:
         file_name = get_file_name(key)
         _clean_old_files(settings.cache_max_files)
@@ -106,8 +116,30 @@ def _clean_old_files(max_files: int):
 
 def _should_cache(config: dict, df: pd.DataFrame) -> bool:
     code = config.get("code", "")
-    is_city = config.get("is_city", False) or (len(code) >= 5 and code[4:6] == "00")
-    return not (is_city and len(df) < 20)
+    return not (is_city_code(code) and len(df) < 20)
+
+
+_COLUMN_RENAME_MAP = {
+    "V": "val",
+    "v": "val",
+    "VAL": "val",
+    "Val": "val",
+    "LON": "lon",
+    "Lon": "lon",
+    "LAT": "lat",
+    "Lat": "lat",
+    "Town": "town",
+    "Station_Name": "name",
+    "D": "dir",
+    "Dir": "dir",
+}
+
+
+def _normalize_df_columns(df: pd.DataFrame) -> None:
+    """将 DataFrame 中非标准字段名统一重命名为小写标准名 (原地修改)."""
+    existing = {k: v for k, v in _COLUMN_RENAME_MAP.items() if k in df.columns and v not in df.columns}
+    if existing:
+        df.rename(columns=existing, inplace=True)
 
 
 class RenderService:
@@ -124,7 +156,7 @@ class RenderService:
         except Exception:
             return 0
 
-    async def render(self, config):
+    async def render(self, config: dict) -> BytesIO:
         if config.get("trace_id") is None:
             config["trace_id"] = config.get("id") or ""
 
@@ -132,9 +164,7 @@ class RenderService:
             cache = _cache_get(config.get("id"))
             if cache is not None:
                 logging.info("Render cache hit: %s", config.get("id"))
-                import io
-
-                return io.BytesIO(cache)
+                return BytesIO(cache)
 
         df = await self._get_data(config)
         df = self._filter_stations(config, df)
@@ -156,13 +186,13 @@ class RenderService:
             raise RuntimeError(msg)
         if _should_cache(config, df):
             _cache_set(config.get("id"), result)
-        import io
-
-        return io.BytesIO(result)
+        return BytesIO(result)
 
     async def _get_data(self, config) -> pd.DataFrame:
         if config.get("is_has_data"):
-            return pd.DataFrame(config.get("data"))
+            df = pd.DataFrame(config.get("data"))
+            _normalize_df_columns(df)
+            return df
         try:
             return await self.data_service.get_data(config["code"], config["datestr"], config["type"], config["axis"])
         except Exception as e:
@@ -179,7 +209,7 @@ class RenderService:
             )
 
     @staticmethod
-    def _filter_stations(config, df) -> pd.DataFrame:
+    def _filter_stations(config: dict, df: pd.DataFrame) -> pd.DataFrame:
         from config import SHOW_MINS
 
         if len(df) == 0:
@@ -199,7 +229,7 @@ class RenderService:
         return df
 
     @staticmethod
-    def _subprocess_render(config):
+    def _subprocess_render(config: dict) -> bytes:
         from config import SHOW_MINS
         from config.towns import towns
         from rendering.worker import render_in_subprocess
@@ -210,39 +240,7 @@ class RenderService:
             pos = []
             vals = []
         else:
-            rename_map = {}
-            if "val" not in df.columns:
-                for key in ("V", "v", "VAL", "Val"):
-                    if key in df.columns:
-                        rename_map[key] = "val"
-                        break
-            if "lon" not in df.columns:
-                for key in ("LON", "Lon"):
-                    if key in df.columns:
-                        rename_map[key] = "lon"
-                        break
-            if "lat" not in df.columns:
-                for key in ("LAT", "Lat"):
-                    if key in df.columns:
-                        rename_map[key] = "lat"
-                        break
-            if "town" not in df.columns:
-                for key in ("Town",):
-                    if key in df.columns:
-                        rename_map[key] = "town"
-                        break
-            if "name" not in df.columns:
-                for key in ("Station_Name",):
-                    if key in df.columns:
-                        rename_map[key] = "name"
-                        break
-            if "dir" not in df.columns:
-                for key in ("D", "Dir"):
-                    if key in df.columns:
-                        rename_map[key] = "dir"
-                        break
-            if rename_map:
-                df.rename(columns=rename_map, inplace=True)
+            _normalize_df_columns(df)
 
             if "Admin_Code_CHN" in df.columns and not config.get("is_city"):
                 df = df[df["Admin_Code_CHN"] == config["code"]]

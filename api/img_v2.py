@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from config import UNITS, get_area_layout, settings
 from config.codes import codes
 from models.base import ItemImg
+from util import is_city_code
 from util.response_code import RET, error_map
 from util.trace import TraceContext
 from util.trace_logger import TraceLogger
@@ -104,8 +105,12 @@ async def save_img(id: str):
 async def get_img(
     code: str = Path(..., description="行政区号6位 eg:330700"),
     datestr: str = Path(..., description="观测时间(世界时) 格式yyyyMMddHHmmss eg:20230727110000"),
-    data_type: str = Path(..., description="数据类型: tem(温度)/rain(降水)/wind(风速)/vis(能见度)/light(闪电)/snow(降雪)"),
-    axis: str = Path(..., description="数据别名: TEM_H_POINT(最高温)/SUM_PRE_1H_POINT(1h降水)/WIN_S_INST_H_POINT(极大风速) 等"),
+    data_type: str = Path(
+        ..., description="数据类型: tem(温度)/rain(降水)/wind(风速)/vis(能见度)/light(闪电)/snow(降雪)"
+    ),
+    axis: str = Path(
+        ..., description="数据别名: TEM_H_POINT(最高温)/SUM_PRE_1H_POINT(1h降水)/WIN_S_INST_H_POINT(极大风速) 等"
+    ),
     show_wind: bool = Query(False, description="是否显示风向杆 默认:false"),
     show_face: bool = Query(False, description="是否显示面雨量 默认:false"),
     show_border: bool = Query(False, description="是否显示边框 默认:false"),
@@ -122,14 +127,23 @@ async def get_img(
     fix: bool = Query(True, description="是否固定图片尺寸 默认:true"),
     show_mesh: bool = Query(False, description="是否显示经纬度网格 默认:false"),
     show_name: bool | None = Query(None, description="是否显示站点名称 默认:true"),
-    color: str | None = Query(None, description="自定义色标 格式:#fff,1,#000,100(颜色,值交替) 传'1'自动色标 传-999999~999999只显示对应色标范围"),
+    color: str | None = Query(
+        None,
+        description="自定义色标 格式:#fff,1,#000,100(颜色,值交替) 传'1'自动色标 传-999999~999999只显示对应色标范围",
+    ),
     title: str | None = Query(None, description="图片标题 默认:不显示"),
     location: str = Query("bottom", description="色标位置: bottom(下方)/right(右侧)/top(上方)/left(左侧)"),
     top_location: str | None = Query(None, description="排行榜位置 格式:左,下,宽,高(百分比0~1) eg:0,0,0.28,0.25"),
-    wind_location: str = Query("0,0,0.28,0.25", description="风向杆区域位置 格式:左,下,宽,高(百分比0~1) eg:0,0,0.28,0.25"),
+    wind_location: str = Query(
+        "0,0,0.28,0.25", description="风向杆区域位置 格式:左,下,宽,高(百分比0~1) eg:0,0,0.28,0.25"
+    ),
     face_location: str | None = Query(None, description="面雨量区域位置 格式:左,下,宽,高(百分比0~1) eg:0,0,0.28,0.25"),
-    publisher_location: str | None = Query("0.7,0.0,0.3,0.1", description="发布单位区域位置 格式:左,下,宽,高(百分比0~1) eg:0.7,0.0,0.3,0.1"),
-    mesh_padding: str = Query("0.0,0.0,0.0,0.0", description="地图内边距(经纬度单位) 格式:上,右,下,左 eg:0.1,0.1,0.1,0.1"),
+    publisher_location: str | None = Query(
+        "0.7,0.0,0.3,0.1", description="发布单位区域位置 格式:左,下,宽,高(百分比0~1) eg:0.7,0.0,0.3,0.1"
+    ),
+    mesh_padding: str = Query(
+        "0.0,0.0,0.0,0.0", description="地图内边距(经纬度单位) 格式:上,右,下,左 eg:0.1,0.1,0.1,0.1"
+    ),
     unit: str | None = Query(None, description="单位标题 '0'不显示 不传显示默认 其他显示传入值"),
     width: int | None = Query(None, description="图片宽度(像素) 默认:配置文件值"),
     height: int | None = Query(None, description="图片高度(像素) 默认:配置文件值"),
@@ -153,11 +167,15 @@ async def get_img(
     title_pad: int = Query(15, description="标题距离图片的间距(像素)"),
     bar_margin: int = Query(95, description="色标距离图片的间距(像素)"),
     offset_lat: float = Query(15.0, description="纬度偏移量(度)"),
-    bounds_lines: str | None = Query(None, description="边界线宽度(磅) 格式:主边界,区县边界,乡镇边界 eg:2,1.5,0.7 必须3个数"),
-    bounds_colors: str | None = Query(None, description="边界线颜色 格式:主边界,区县边界,乡镇边界 eg:#333,#333,#666 必须3个数"),
+    bounds_lines: str | None = Query(
+        None, description="边界线宽度(磅) 格式:主边界,区县边界,乡镇边界 eg:2,1.5,0.7 必须3个数"
+    ),
+    bounds_colors: str | None = Query(
+        None, description="边界线颜色 格式:主边界,区县边界,乡镇边界 eg:#333,#333,#666 必须3个数"
+    ),
     publisher: str = Query("", description="发布单位文字"),
 ) -> StreamingResponse:
-    is_city = len(code) >= 5 and int(code[4:]) == 0
+    is_city = is_city_code(code)
     month = int(datestr[4:6]) if datestr and len(datestr) >= 6 else datetime.now().month
 
     request_config = {
@@ -255,7 +273,7 @@ async def create_img(
     item: ItemImg = ItemImg(),
 ):
     request_config = item.model_dump()
-    is_city = len(code) >= 5 and int(code[4:]) == 0
+    is_city = is_city_code(code)
 
     request_config["bound_lines"] = _parse_bounds_lines(request_config.get("bounds_lines"), is_city)
     request_config["bounds_colors"] = _parse_bounds_colors(request_config.get("bounds_colors"))

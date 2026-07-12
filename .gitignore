@@ -43,6 +43,7 @@ imgs/data/
 imgs/temp/
 script/
 pic/
+temp/
 
 ## Config with secrets
 config.json
